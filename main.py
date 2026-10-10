@@ -10,7 +10,8 @@ from sqlalchemy import func
 from database import engine, Base, get_db
 from models import (
     Room, Booking, RestaurantTable, PosOrder, PosOrderItem,
-    InventoryItem, CorporateAccount, RoomDefect, NightAuditLog, MenuItem
+    InventoryItem, CorporateAccount, RoomDefect, NightAuditLog, MenuItem,
+    Gstr1Filing, StaffAttendance, LaundryOrder
 )
 from schemas import (
     RoomCreate, RoomResponse, RoomStatusUpdate,
@@ -20,7 +21,10 @@ from schemas import (
     CorporateAccountResponse, CorporatePaymentRequest,
     RoomDefectCreate, RoomDefectResponse,
     NightAuditRequest, NightAuditResponse, DashboardStats,
-    MenuItemResponse, MenuItemCreate, PropertyInfoResponse
+    MenuItemResponse, MenuItemCreate, PropertyInfoResponse,
+    Gstr1FilingCreate, Gstr1FilingResponse, Gstr1SummaryResponse,
+    StaffAttendanceCreate, StaffAttendanceResponse, StaffRosterMember,
+    LaundryOrderCreate, LaundryOrderResponse, LaundryOrderStatusUpdate
 )
 from seed import seed_database
 
@@ -619,5 +623,209 @@ def get_sample_thermal_receipt():
 @app.post("/api/system/sync-master-data", tags=["System"])
 def sync_master_data():
     seed_database()
-    return {"success": True, "message": "Master data synced: 27 physical rooms and official menu items refreshed."}
+    return {"success": True, "message": "Master data synced: 27 physical rooms, menu, GST, and staff data refreshed."}
+
+
+# -------------------------------------------------------------
+# GST GSTR-1 & Statutory Tax Filing Endpoints
+# -------------------------------------------------------------
+@app.get("/api/gst/filings", response_model=List[Gstr1FilingResponse], tags=["GST & Tax Filings"])
+def get_gst_filings(return_period: Optional[str] = None, db: Session = Depends(get_db)):
+    """
+    List GST tax invoices and GSTR-1 filing records for audit and portal submission.
+    """
+    query = db.query(Gstr1Filing)
+    if return_period:
+        query = query.filter(Gstr1Filing.return_period == return_period)
+    return query.order_by(Gstr1Filing.id.desc()).all()
+
+@app.post("/api/gst/filings", response_model=Gstr1FilingResponse, status_code=status.HTTP_201_CREATED, tags=["GST & Tax Filings"])
+def create_gst_filing_invoice(filing_data: Gstr1FilingCreate, db: Session = Depends(get_db)):
+    """
+    Record a new GST B2B or B2CS invoice into the cloud database for statutory return.
+    """
+    new_filing = Gstr1Filing(**filing_data.model_dump())
+    db.add(new_filing)
+    db.commit()
+    db.refresh(new_filing)
+    return new_filing
+
+@app.get("/api/gst/summary/{return_period}", response_model=Gstr1SummaryResponse, tags=["GST & Tax Filings"])
+def get_gstr1_summary(return_period: str, db: Session = Depends(get_db)):
+    """
+    Generate statutory GSTR-1 return summary for Government GST Portal upload.
+    Aggregates B2B taxable turnover, B2CS consumer folios, HSN SAC breakdowns, and CGST/SGST liability.
+    """
+    filings = db.query(Gstr1Filing).filter(Gstr1Filing.return_period == return_period).all()
+    
+    b2b = [f for f in filings if f.invoice_type == "B2B"]
+    b2cs = [f for f in filings if f.invoice_type != "B2B"]
+    
+    total_taxable = sum(f.taxable_value for f in filings)
+    total_cgst = sum(f.cgst_amount for f in filings)
+    total_sgst = sum(f.sgst_amount for f in filings)
+    total_igst = sum(f.igst_amount for f in filings)
+    total_value = sum(f.total_invoice_value for f in filings)
+    
+    # HSN breakdown calculation
+    hsn_map = {}
+    for f in filings:
+        code = f.hsn_sac_code or "996311"
+        desc = "Accommodation Services" if code == "996311" else "Restaurant F&B Services"
+        if code not in hsn_map:
+            hsn_map[code] = {
+                "hsn_sac": code,
+                "description": desc,
+                "taxable_amount": 0.0,
+                "cgst": 0.0,
+                "sgst": 0.0,
+                "igst": 0.0,
+                "total_tax": 0.0
+            }
+        hsn_map[code]["taxable_amount"] += f.taxable_value
+        hsn_map[code]["cgst"] += f.cgst_amount
+        hsn_map[code]["sgst"] += f.sgst_amount
+        hsn_map[code]["igst"] += f.igst_amount
+        hsn_map[code]["total_tax"] += (f.cgst_amount + f.sgst_amount + f.igst_amount)
+
+    return {
+        "return_period": return_period,
+        "total_invoices": len(filings),
+        "b2b_invoices_count": len(b2b),
+        "b2cs_invoices_count": len(b2cs),
+        "total_taxable_value": round(total_taxable, 2),
+        "total_cgst": round(total_cgst, 2),
+        "total_sgst": round(total_sgst, 2),
+        "total_igst": round(total_igst, 2),
+        "total_tax_liability": round(total_cgst + total_sgst + total_igst, 2),
+        "total_invoice_value": round(total_value, 2),
+        "hsn_breakdown": list(hsn_map.values())
+    }
+
+@app.put("/api/gst/filings/{filing_id}/status", tags=["GST & Tax Filings"])
+def update_gst_filing_status(filing_id: int, new_status: str = Query(..., description="Uploaded, Filed, or Ready for Upload"), ack_num: Optional[str] = None, db: Session = Depends(get_db)):
+    record = db.query(Gstr1Filing).filter(Gstr1Filing.id == filing_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="GST invoice record not found")
+    record.filing_status = new_status
+    if ack_num:
+        record.acknowledgement_num = ack_num
+    db.commit()
+    db.refresh(record)
+    return {"success": True, "id": record.id, "filing_status": record.filing_status, "ack_num": record.acknowledgement_num}
+
+
+# -------------------------------------------------------------
+# Staff Attendance & Shift Operations Endpoints
+# -------------------------------------------------------------
+OFFICIAL_STAFF_ROSTER = [
+    {"staff_id": "EMP-001", "name": "Bikram Keshari Sahu", "department": "Front Office", "designation": "Front Office Manager", "phone": "+91-6370757541", "shift": "Morning", "status": "Active"},
+    {"staff_id": "EMP-002", "name": "Sunil Mohapatra", "department": "Housekeeping", "designation": "Executive Housekeeper", "phone": "+91-9437011223", "shift": "Morning", "status": "Active"},
+    {"staff_id": "EMP-003", "name": "Ramesh Nayak", "department": "Housekeeping", "designation": "Senior Attendant", "phone": "+91-9438022334", "shift": "Morning", "status": "Active"},
+    {"staff_id": "EMP-004", "name": "Santosh Biswal", "department": "Food & Beverage", "designation": "Head Steward", "phone": "+91-9861033445", "shift": "Evening", "status": "Active"},
+    {"staff_id": "EMP-005", "name": "Chef Debendra Panda", "department": "Kitchen", "designation": "Executive Chef", "phone": "+91-9439044556", "shift": "Morning", "status": "Active"},
+    {"staff_id": "EMP-006", "name": "Prakash Sahu", "department": "Maintenance", "designation": "Duty Electrician", "phone": "+91-9853055667", "shift": "Morning", "status": "Active"},
+    {"staff_id": "EMP-007", "name": "Manoj Kumar Sahu", "department": "Accounts", "designation": "Accounts & Cashier", "phone": "+91-9437066778", "shift": "General", "status": "Active"},
+    {"staff_id": "EMP-008", "name": "Deepak Mohanty", "department": "Front Office", "designation": "Night Auditor", "phone": "+91-9438077889", "shift": "Night", "status": "Active"}
+]
+
+@app.get("/api/staff/roster", response_model=List[StaffRosterMember], tags=["Staff & Attendance"])
+def get_staff_roster():
+    """
+    Returns authentic employee directory and department roster for Hotel Elite Inn.
+    """
+    return OFFICIAL_STAFF_ROSTER
+
+@app.get("/api/staff/attendance", response_model=List[StaffAttendanceResponse], tags=["Staff & Attendance"])
+def get_staff_attendance(attendance_date: Optional[str] = None, db: Session = Depends(get_db)):
+    """
+    Get staff punch attendance logs for a specific date (e.g. 10-OCT-2026).
+    """
+    query = db.query(StaffAttendance)
+    if attendance_date:
+        query = query.filter(StaffAttendance.attendance_date == attendance_date)
+    return query.order_by(StaffAttendance.id.desc()).all()
+
+@app.post("/api/staff/attendance/punch", response_model=StaffAttendanceResponse, status_code=status.HTTP_201_CREATED, tags=["Staff & Attendance"])
+def punch_staff_attendance(punch_data: StaffAttendanceCreate, db: Session = Depends(get_db)):
+    """
+    Punch in or punch out staff attendance with shift and department metadata.
+    """
+    existing = db.query(StaffAttendance).filter(
+        StaffAttendance.staff_id == punch_data.staff_id,
+        StaffAttendance.attendance_date == punch_data.attendance_date
+    ).first()
+
+    if existing:
+        if punch_data.punch_out_time:
+            existing.punch_out_time = punch_data.punch_out_time
+        if punch_data.status:
+            existing.status = punch_data.status
+        if punch_data.remarks:
+            existing.remarks = punch_data.remarks
+        db.commit()
+        db.refresh(existing)
+        return existing
+
+    new_attendance = StaffAttendance(**punch_data.model_dump())
+    db.add(new_attendance)
+    db.commit()
+    db.refresh(new_attendance)
+    return new_attendance
+
+
+# -------------------------------------------------------------
+# Laundry Service Management Endpoints
+# -------------------------------------------------------------
+@app.get("/api/laundry/rates", tags=["Laundry Services"])
+def get_laundry_rates():
+    """
+    Standard laundry tariffs and washing service charges for in-house room guests.
+    """
+    return [
+        {"item_name": "Shirt / T-Shirt", "normal_rate": 60.0, "express_rate": 90.0, "dry_clean_rate": 120.0},
+        {"item_name": "Trouser / Jeans", "normal_rate": 60.0, "express_rate": 90.0, "dry_clean_rate": 130.0},
+        {"item_name": "Safari Suit / Blazer", "normal_rate": 180.0, "express_rate": 270.0, "dry_clean_rate": 350.0},
+        {"item_name": "Kurta / Pyjama", "normal_rate": 60.0, "express_rate": 90.0, "dry_clean_rate": 110.0},
+        {"item_name": "Saree / Dupatta", "normal_rate": 120.0, "express_rate": 180.0, "dry_clean_rate": 220.0},
+        {"item_name": "Undergarments / Socks", "normal_rate": 30.0, "express_rate": 45.0, "dry_clean_rate": 60.0}
+    ]
+
+@app.get("/api/laundry/orders", response_model=List[LaundryOrderResponse], tags=["Laundry Services"])
+def get_laundry_orders(order_status: Optional[str] = None, room_number: Optional[str] = None, db: Session = Depends(get_db)):
+    """
+    List laundry service orders with optional filters by order status or guest room number.
+    """
+    query = db.query(LaundryOrder)
+    if order_status:
+        query = query.filter(LaundryOrder.order_status == order_status)
+    if room_number:
+        query = query.filter(LaundryOrder.room_number == room_number)
+    return query.order_by(LaundryOrder.id.desc()).all()
+
+@app.post("/api/laundry/orders", response_model=LaundryOrderResponse, status_code=status.HTTP_201_CREATED, tags=["Laundry Services"])
+def create_laundry_order(order_data: LaundryOrderCreate, db: Session = Depends(get_db)):
+    """
+    Create a new guest laundry collection order and post billing to the room folio.
+    """
+    new_order = LaundryOrder(**order_data.model_dump())
+    db.add(new_order)
+    db.commit()
+    db.refresh(new_order)
+    return new_order
+
+@app.put("/api/laundry/orders/{order_id}/status", response_model=LaundryOrderResponse, tags=["Laundry Services"])
+def update_laundry_order_status(order_id: int, status_update: LaundryOrderStatusUpdate, db: Session = Depends(get_db)):
+    """
+    Update laundry progress from Received -> In-Process -> Ready -> Delivered.
+    """
+    order = db.query(LaundryOrder).filter(LaundryOrder.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Laundry order not found")
+    order.order_status = status_update.order_status
+    if status_update.order_status == "Delivered":
+        order.delivered_at = datetime.utcnow()
+    db.commit()
+    db.refresh(order)
+    return order
 

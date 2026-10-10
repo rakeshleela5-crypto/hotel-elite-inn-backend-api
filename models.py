@@ -166,3 +166,68 @@ class MenuItem(Base):
     description = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
+class Gstr1Filing(Base):
+    __tablename__ = "gstr1_filings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    return_period = Column(String(20), index=True, nullable=False) # e.g. "OCT-2026"
+    invoice_number = Column(String(50), index=True, nullable=False)
+    invoice_date = Column(String(30), nullable=False) # e.g. "10-OCT-2026"
+    invoice_type = Column(String(30), default="B2B") # 'B2B', 'B2CS', 'B2CL'
+    customer_name = Column(String(150), nullable=False)
+    customer_gstin = Column(String(50), nullable=True) # e.g. "21AAACJ1122K1Z9"
+    place_of_supply = Column(String(50), default="21-Odisha")
+    hsn_sac_code = Column(String(20), default="996311") # 996311 (Room), 996331 (F&B)
+    taxable_value = Column(Float, default=0.0)
+    cgst_rate = Column(Float, default=6.0)
+    cgst_amount = Column(Float, default=0.0)
+    sgst_rate = Column(Float, default=6.0)
+    sgst_amount = Column(Float, default=0.0)
+    igst_rate = Column(Float, default=0.0)
+    igst_amount = Column(Float, default=0.0)
+    total_invoice_value = Column(Float, default=0.0)
+    filing_status = Column(String(30), default="Ready for Upload") # 'Ready for Upload', 'Uploaded', 'Filed'
+    acknowledgement_num = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class StaffAttendance(Base):
+    __tablename__ = "staff_attendance"
+
+    id = Column(Integer, primary_key=True, index=True)
+    staff_id = Column(String(30), index=True, nullable=False) # e.g. "EMP-001"
+    staff_name = Column(String(100), nullable=False)
+    department = Column(String(50), nullable=False) # 'Front Office', 'Housekeeping', 'Food & Beverage', 'Kitchen', 'Accounts'
+    designation = Column(String(60), nullable=False)
+    shift = Column(String(50), default="Morning (07:00-15:00)")
+    attendance_date = Column(String(30), index=True, nullable=False) # e.g. "10-OCT-2026"
+    punch_in_time = Column(String(30), nullable=True) # e.g. "06:55 AM"
+    punch_out_time = Column(String(30), nullable=True) # e.g. "03:10 PM"
+    status = Column(String(30), default="Present") # 'Present', 'Half Day', 'Late', 'Absent', 'On Leave'
+    remarks = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class LaundryOrder(Base):
+    __tablename__ = "laundry_orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    reference_number = Column(String(50), unique=True, index=True, nullable=False) # e.g. "LND-2026-001"
+    room_number = Column(String(20), nullable=False) # "102", "201", "301"
+    guest_name = Column(String(100), nullable=False)
+    service_type = Column(String(30), default="Normal") # 'Normal', 'Express (+50%)', 'Dry Clean'
+    items_detail = Column(Text, nullable=True) # e.g. "Shirt x 2, Trouser x 2"
+    total_pieces = Column(Integer, default=1)
+    rate_amount = Column(Float, default=0.0)
+    express_surcharge = Column(Float, default=0.0)
+    tax_amount = Column(Float, default=0.0)
+    total_amount = Column(Float, default=0.0)
+    order_status = Column(String(30), default="Received") # 'Received', 'In-Process', 'Ready', 'Delivered'
+    billing_status = Column(String(30), default="Billed to Room") # 'Billed to Room', 'Direct Cash', 'Complimentary'
+    received_date = Column(String(30), nullable=False) # e.g. "10-OCT-2026"
+    expected_delivery = Column(String(30), nullable=True)
+    delivered_at = Column(DateTime, nullable=True)
+    attendant = Column(String(100), default="Sunil Mohapatra")
+    created_at = Column(DateTime, default=datetime.utcnow)
+

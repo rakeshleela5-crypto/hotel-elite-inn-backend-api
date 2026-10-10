@@ -256,3 +256,112 @@ class PropertyInfoResponse(BaseModel):
     cashier: Optional[str] = "Bikram26"
     place_of_supply: Optional[str] = "O.D"
 
+
+# -------------------------------------------------------------
+# GST GSTR-1 Filing Schemas
+# -------------------------------------------------------------
+class Gstr1FilingCreate(BaseModel):
+    return_period: str # "OCT-2026"
+    invoice_number: str
+    invoice_date: str # "10-OCT-2026"
+    invoice_type: str = "B2B" # 'B2B', 'B2CS', 'B2CL'
+    customer_name: str
+    customer_gstin: Optional[str] = None
+    place_of_supply: str = "21-Odisha"
+    hsn_sac_code: str = "996311"
+    taxable_value: float
+    cgst_rate: float = 6.0
+    cgst_amount: float
+    sgst_rate: float = 6.0
+    sgst_amount: float
+    igst_rate: float = 0.0
+    igst_amount: float = 0.0
+    total_invoice_value: float
+    filing_status: str = "Ready for Upload"
+
+class Gstr1FilingResponse(Gstr1FilingCreate):
+    id: int
+    acknowledgement_num: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class Gstr1SummaryResponse(BaseModel):
+    return_period: str
+    total_invoices: int
+    b2b_invoices_count: int
+    b2cs_invoices_count: int
+    total_taxable_value: float
+    total_cgst: float
+    total_sgst: float
+    total_igst: float
+    total_tax_liability: float
+    total_invoice_value: float
+    hsn_breakdown: List[dict]
+
+
+# -------------------------------------------------------------
+# Staff Attendance Schemas
+# -------------------------------------------------------------
+class StaffAttendanceCreate(BaseModel):
+    staff_id: str
+    staff_name: str
+    department: str
+    designation: str
+    shift: str = "Morning (07:00-15:00)"
+    attendance_date: str
+    punch_in_time: Optional[str] = None
+    punch_out_time: Optional[str] = None
+    status: str = "Present"
+    remarks: Optional[str] = None
+
+class StaffAttendanceResponse(StaffAttendanceCreate):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class StaffRosterMember(BaseModel):
+    staff_id: str
+    name: str
+    department: str
+    designation: str
+    phone: str
+    shift: str
+    status: str = "Active"
+
+
+# -------------------------------------------------------------
+# Laundry Order Schemas
+# -------------------------------------------------------------
+class LaundryOrderCreate(BaseModel):
+    reference_number: str
+    room_number: str
+    guest_name: str
+    service_type: str = "Normal"
+    items_detail: Optional[str] = None
+    total_pieces: int = 1
+    rate_amount: float
+    express_surcharge: float = 0.0
+    tax_amount: float = 0.0
+    total_amount: float
+    order_status: str = "Received"
+    billing_status: str = "Billed to Room"
+    received_date: str
+    expected_delivery: Optional[str] = None
+    attendant: str = "Sunil Mohapatra"
+
+class LaundryOrderStatusUpdate(BaseModel):
+    order_status: str # 'Received', 'In-Process', 'Ready', 'Delivered'
+    delivered_at: Optional[datetime] = None
+
+class LaundryOrderResponse(LaundryOrderCreate):
+    id: int
+    delivered_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+

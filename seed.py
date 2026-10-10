@@ -1,7 +1,8 @@
 from datetime import datetime
 from database import SessionLocal, engine, Base
 from models import (
-    Room, RestaurantTable, InventoryItem, CorporateAccount, RoomDefect, MenuItem
+    Room, RestaurantTable, InventoryItem, CorporateAccount, RoomDefect, MenuItem,
+    Gstr1Filing, StaffAttendance, LaundryOrder
 )
 
 def seed_database():
@@ -353,6 +354,149 @@ def seed_database():
                 db.add(RoomDefect(**d))
             db.commit()
             print(f"✓ Seeded {len(defects_data)} Room Defects.")
+
+        # -------------------------------------------------------------
+        # 7. GST GSTR-1 Invoices & Filings (October 2026 Return Period)
+        # -------------------------------------------------------------
+        if db.query(Gstr1Filing).count() == 0:
+            gst_data = [
+                {
+                    "return_period": "OCT-2026",
+                    "invoice_number": "INV-2026-0891",
+                    "invoice_date": "04-OCT-2026",
+                    "invoice_type": "B2B",
+                    "customer_name": "Ashok Leyland Logistics",
+                    "customer_gstin": "21AABCA1234F1Z1",
+                    "place_of_supply": "21-Odisha",
+                    "hsn_sac_code": "996311",
+                    "taxable_value": 16400.0,
+                    "cgst_rate": 6.0,
+                    "cgst_amount": 984.0,
+                    "sgst_rate": 6.0,
+                    "sgst_amount": 984.0,
+                    "igst_rate": 0.0,
+                    "igst_amount": 0.0,
+                    "total_invoice_value": 18368.0,
+                    "filing_status": "Ready for Upload",
+                    "acknowledgement_num": "ACK-GSTR1-26-891"
+                },
+                {
+                    "return_period": "OCT-2026",
+                    "invoice_number": "INV-2026-0892",
+                    "invoice_date": "06-OCT-2026",
+                    "invoice_type": "B2B",
+                    "customer_name": "Utkal Alumina Int. Ltd (Aditya Birla)",
+                    "customer_gstin": "21AAACU4567G1Z8",
+                    "place_of_supply": "21-Odisha",
+                    "hsn_sac_code": "996311",
+                    "taxable_value": 24600.0,
+                    "cgst_rate": 6.0,
+                    "cgst_amount": 1476.0,
+                    "sgst_rate": 6.0,
+                    "sgst_amount": 1476.0,
+                    "igst_rate": 0.0,
+                    "igst_amount": 0.0,
+                    "total_invoice_value": 27552.0,
+                    "filing_status": "Ready for Upload",
+                    "acknowledgement_num": "ACK-GSTR1-26-892"
+                },
+                {
+                    "return_period": "OCT-2026",
+                    "invoice_number": "INV-2026-0893",
+                    "invoice_date": "08-OCT-2026",
+                    "invoice_type": "B2B",
+                    "customer_name": "JK Paper Mills Ltd (Rayagada)",
+                    "customer_gstin": "21AAACJ1122K1Z9",
+                    "place_of_supply": "21-Odisha",
+                    "hsn_sac_code": "996331",
+                    "taxable_value": 8500.0,
+                    "cgst_rate": 2.5,
+                    "cgst_amount": 212.5,
+                    "sgst_rate": 2.5,
+                    "sgst_amount": 212.5,
+                    "igst_rate": 0.0,
+                    "igst_amount": 0.0,
+                    "total_invoice_value": 8925.0,
+                    "filing_status": "Ready for Upload",
+                    "acknowledgement_num": "ACK-GSTR1-26-893"
+                },
+                {
+                    "return_period": "OCT-2026",
+                    "invoice_number": "INV-2026-0894",
+                    "invoice_date": "09-OCT-2026",
+                    "invoice_type": "B2CS",
+                    "customer_name": "Walk-in Guest Folios (Aggregated)",
+                    "customer_gstin": None,
+                    "place_of_supply": "21-Odisha",
+                    "hsn_sac_code": "996311",
+                    "taxable_value": 14500.0,
+                    "cgst_rate": 6.0,
+                    "cgst_amount": 870.0,
+                    "sgst_rate": 6.0,
+                    "sgst_amount": 870.0,
+                    "igst_rate": 0.0,
+                    "igst_amount": 0.0,
+                    "total_invoice_value": 16240.0,
+                    "filing_status": "Ready for Upload",
+                    "acknowledgement_num": None
+                },
+                {
+                    "return_period": "OCT-2026",
+                    "invoice_number": "INV-2026-0895",
+                    "invoice_date": "10-OCT-2026",
+                    "invoice_type": "B2CS",
+                    "customer_name": "Cannon Restaurant Table Dining",
+                    "customer_gstin": None,
+                    "place_of_supply": "21-Odisha",
+                    "hsn_sac_code": "996331",
+                    "taxable_value": 9200.0,
+                    "cgst_rate": 2.5,
+                    "cgst_amount": 230.0,
+                    "sgst_rate": 2.5,
+                    "sgst_amount": 230.0,
+                    "igst_rate": 0.0,
+                    "igst_amount": 0.0,
+                    "total_invoice_value": 9660.0,
+                    "filing_status": "Ready for Upload",
+                    "acknowledgement_num": None
+                }
+            ]
+            for g in gst_data:
+                db.add(Gstr1Filing(**g))
+            db.commit()
+            print(f"✓ Seeded {len(gst_data)} GSTR-1 Invoices.")
+
+        # -------------------------------------------------------------
+        # 8. Staff Attendance & Shift Roster (Hotel Elite Inn Staff)
+        # -------------------------------------------------------------
+        if db.query(StaffAttendance).count() == 0:
+            staff_data = [
+                {"staff_id": "EMP-001", "staff_name": "Bikram Keshari Sahu", "department": "Front Office", "designation": "Front Office Manager", "shift": "Morning (07:00-15:00)", "attendance_date": "10-OCT-2026", "punch_in_time": "06:45 AM", "punch_out_time": "03:15 PM", "status": "Present", "remarks": "On Duty - Shift Handover Complete"},
+                {"staff_id": "EMP-002", "staff_name": "Sunil Mohapatra", "department": "Housekeeping", "designation": "Executive Housekeeper", "shift": "Morning (07:00-15:00)", "attendance_date": "10-OCT-2026", "punch_in_time": "06:55 AM", "punch_out_time": "03:10 PM", "status": "Present", "remarks": "Morning Floor 1 & 2 Audits"},
+                {"staff_id": "EMP-003", "staff_name": "Ramesh Nayak", "department": "Housekeeping", "designation": "Senior Attendant", "shift": "Morning (07:00-15:00)", "attendance_date": "10-OCT-2026", "punch_in_time": "07:00 AM", "punch_out_time": "03:00 PM", "status": "Present", "remarks": "Floor 3 Deep Clean"},
+                {"staff_id": "EMP-004", "staff_name": "Santosh Biswal", "department": "Food & Beverage", "designation": "Head Steward", "shift": "Evening (15:00-23:00)", "attendance_date": "10-OCT-2026", "punch_in_time": "02:50 PM", "punch_out_time": None, "status": "Present", "remarks": "Dinner Service Lead"},
+                {"staff_id": "EMP-005", "staff_name": "Chef Debendra Panda", "department": "Kitchen", "designation": "Executive Chef", "shift": "Morning (07:00-15:00)", "attendance_date": "10-OCT-2026", "punch_in_time": "06:30 AM", "punch_out_time": "03:30 PM", "status": "Present", "remarks": "Kitchen KDS & Store Requisition"},
+                {"staff_id": "EMP-006", "staff_name": "Prakash Sahu", "department": "Maintenance", "designation": "Duty Electrician", "shift": "Morning (07:00-15:00)", "attendance_date": "10-OCT-2026", "punch_in_time": "07:10 AM", "punch_out_time": "03:05 PM", "status": "Present", "remarks": "Room 104 AC Servicing"},
+                {"staff_id": "EMP-007", "staff_name": "Manoj Kumar Sahu", "department": "Accounts", "designation": "Accounts & Cashier", "shift": "Morning (09:00-18:00)", "attendance_date": "10-OCT-2026", "punch_in_time": "08:50 AM", "punch_out_time": "06:05 PM", "status": "Present", "remarks": "Daily Cash Reconciliation"},
+            ]
+            for s in staff_data:
+                db.add(StaffAttendance(**s))
+            db.commit()
+            print(f"✓ Seeded {len(staff_data)} Staff Attendance Records.")
+
+        # -------------------------------------------------------------
+        # 9. Laundry Service Orders
+        # -------------------------------------------------------------
+        if db.query(LaundryOrder).count() == 0:
+            laundry_data = [
+                {"reference_number": "LND-2026-001", "room_number": "102", "guest_name": "Rajesh Sharma", "service_type": "Normal", "items_detail": "Formal Shirt x 2, Cotton Trouser x 2", "total_pieces": 4, "rate_amount": 240.0, "express_surcharge": 0.0, "tax_amount": 28.8, "total_amount": 268.8, "order_status": "Delivered", "billing_status": "Billed to Room", "received_date": "09-OCT-2026", "expected_delivery": "10-OCT-2026 10:00", "attendant": "Sunil Mohapatra"},
+                {"reference_number": "LND-2026-002", "room_number": "201", "guest_name": "Anil Patnaik", "service_type": "Express (+50%)", "items_detail": "Safari Suit x 1, Silk Kurta x 2", "total_pieces": 3, "rate_amount": 350.0, "express_surcharge": 175.0, "tax_amount": 63.0, "total_amount": 588.0, "order_status": "In-Process", "billing_status": "Billed to Room", "received_date": "10-OCT-2026", "expected_delivery": "10-OCT-2026 18:00", "attendant": "Sunil Mohapatra"},
+                {"reference_number": "LND-2026-003", "room_number": "205", "guest_name": "Sunil Mohanty", "service_type": "Normal", "items_detail": "T-Shirt x 3, Denim Jeans x 1", "total_pieces": 4, "rate_amount": 280.0, "express_surcharge": 0.0, "tax_amount": 33.6, "total_amount": 313.6, "order_status": "Received", "billing_status": "Billed to Room", "received_date": "10-OCT-2026", "expected_delivery": "11-OCT-2026 11:00", "attendant": "Ramesh Nayak"},
+            ]
+            for l in laundry_data:
+                db.add(LaundryOrder(**l))
+            db.commit()
+            print(f"✓ Seeded {len(laundry_data)} Laundry Orders.")
 
     except Exception as e:
         db.rollback()

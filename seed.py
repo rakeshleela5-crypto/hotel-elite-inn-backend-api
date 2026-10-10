@@ -268,13 +268,46 @@ def seed_database():
                 {"item_code": "RCE-16", "name": "MUTTON BIRYANI", "category": "Basmati Ke Jadoo", "price": 350.0, "is_veg": False},
                 {"item_code": "RCE-17", "name": "MUTTON HANDI BIRYANI", "category": "Basmati Ke Jadoo", "price": 400.0, "is_veg": False},
 
-                # Continental
+                # Continental & Pastas (Menu Photo 1)
                 {"item_code": "CONT-01", "name": "WHITE SAUCE PASTA VEG", "category": "Continental", "price": 200.0, "is_veg": True},
+                {"item_code": "CONT-02", "name": "RED SAUCE PASTA VEG", "category": "Continental", "price": 200.0, "is_veg": True},
+                {"item_code": "CONT-03", "name": "FUSELI PASTA", "category": "Continental", "price": 210.0, "is_veg": True},
+                {"item_code": "CONT-04", "name": "MIX SAUCE PASTA", "category": "Continental", "price": 220.0, "is_veg": True},
+                {"item_code": "CONT-05", "name": "WHITE SAUCE CHICKEN PASTA", "category": "Continental", "price": 280.0, "is_veg": False},
+                {"item_code": "CONT-06", "name": "RED SAUCE CHICKEN PASTA", "category": "Continental", "price": 280.0, "is_veg": False},
+                {"item_code": "CONT-07", "name": "MIX SAUCE CHICKEN PASTA", "category": "Continental", "price": 300.0, "is_veg": False},
+                {"item_code": "CONT-08", "name": "CHICKEN BARBECUE", "category": "Continental", "price": 250.0, "is_veg": False},
+
+                # Sizzlers (Menu Photo 1)
+                {"item_code": "SZL-01", "name": "VEG MIX GRILLED SIZZLER", "category": "Sizzlers", "price": 200.0, "is_veg": True},
+                {"item_code": "SZL-02", "name": "MIX VEG TANDOORI SIZZLER", "category": "Sizzlers", "price": 350.0, "is_veg": True},
+                {"item_code": "SZL-03", "name": "CHICKEN TIKKA SIZZLER", "category": "Sizzlers", "price": 400.0, "is_veg": False},
+                {"item_code": "SZL-04", "name": "MIX CHICKEN SIZZLER", "category": "Sizzlers", "price": 400.0, "is_veg": False},
+                {"item_code": "SZL-05", "name": "MIX NON VEG SIZZLER", "category": "Sizzlers", "price": 550.0, "is_veg": False},
+
+                # Sweet Memories / Desserts (Menu Photo 1)
+                {"item_code": "DES-01", "name": "FRESH FRUITE PLATTER", "category": "Desserts", "price": 200.0, "is_veg": True},
+                {"item_code": "DES-02", "name": "HOT GULAB JAMUN", "category": "Desserts", "price": 110.0, "is_veg": True},
+                {"item_code": "DES-03", "name": "RICE KHEER", "category": "Desserts", "price": 90.0, "is_veg": True},
+                {"item_code": "DES-04", "name": "GAJAR HALWA (SEASONAL)", "category": "Desserts", "price": 120.0, "is_veg": True},
+                {"item_code": "DES-05", "name": "HOT GULAB JAMUN WITH ICE-CREAM", "category": "Desserts", "price": 150.0, "is_veg": True},
+                {"item_code": "DES-06", "name": "VANILLA ICE-CREAM", "category": "Desserts", "price": 80.0, "is_veg": True},
+                {"item_code": "DES-07", "name": "VANILL ICE-CREAM WITH HOT CHOCOLATE SAUCE", "category": "Desserts", "price": 150.0, "is_veg": True},
+                {"item_code": "DES-08", "name": "STRAWBERRY ICE-CREAM", "category": "Desserts", "price": 80.0, "is_veg": True},
+                {"item_code": "DES-09", "name": "PLAIN PISTA", "category": "Desserts", "price": 80.0, "is_veg": True},
+                {"item_code": "DES-10", "name": "KEASR PISTA", "category": "Desserts", "price": 100.0, "is_veg": True},
+                {"item_code": "DES-11", "name": "BUTTER SCOTCH", "category": "Desserts", "price": 110.0, "is_veg": True},
+                {"item_code": "DES-12", "name": "CHOCOLATE ICE-CREAM", "category": "Desserts", "price": 110.0, "is_veg": True},
+
+                # From Room Service Thermal Bill (Photo 2 - R.S/2913)
+                {"item_code": "DAL-01", "name": "DAL FRY", "category": "Dal & Curries", "price": 130.0, "is_veg": True},
             ]
             for m in menu_data:
-                db.add(MenuItem(**m))
+                existing = db.query(MenuItem).filter(MenuItem.name == m["name"]).first()
+                if not existing:
+                    db.add(MenuItem(**m))
             db.commit()
-            print(f"✓ Seeded {len(menu_data)} Authentic Menu Items.")
+            print(f"✓ Seeded Authentic Menu Items.")
 
         # -------------------------------------------------------------
         # 4. Inventory Raw Items

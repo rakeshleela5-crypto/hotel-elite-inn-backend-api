@@ -250,4 +250,9 @@ class PropertyInfoResponse(BaseModel):
     facilities: List[str]
     wifi: dict
     intercom: List[dict]
+    gstin: Optional[str] = "21AEWFS9433F1ZN"
+    sac_code: Optional[str] = "996332"
+    fssai_no: Optional[str] = "10523016000047"
+    cashier: Optional[str] = "Bikram26"
+    place_of_supply: Optional[str] = "O.D"
 

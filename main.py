@@ -549,7 +549,12 @@ def get_property_info():
             {"department": "Laundry", "extension": "114"},
             {"department": "GM Sir", "extension": "115"},
             {"department": "MD Sir", "extension": "116"}
-        ]
+        ],
+        "gstin": "21AEWFS9433F1ZN",
+        "sac_code": "996332",
+        "fssai_no": "10523016000047",
+        "cashier": "Bikram26",
+        "place_of_supply": "O.D"
     }
 
 # -------------------------------------------------------------
@@ -561,6 +566,55 @@ def get_restaurant_menu(category: Optional[str] = None, db: Session = Depends(ge
     if category:
         query = query.filter(MenuItem.category == category)
     return query.order_by(MenuItem.id.asc()).all()
+
+# -------------------------------------------------------------
+# Authentic Thermal Tax Invoice Receipt (Photo 2 - R.S/2913)
+# -------------------------------------------------------------
+@app.get("/api/pos/thermal-receipt/sample", tags=["Point of Sale (POS)"])
+def get_sample_thermal_receipt():
+    """
+    Returns authentic Hotel Elite Inn POS Tax Invoice thermal receipt payload
+    matching the physical 80mm/58mm printed slip (Photo 2).
+    """
+    return {
+        "invoice_type": "TAX INVOICE",
+        "title": "ORIGINAL FOR RECIPIENT",
+        "hotel_name": "HOTEL ELITE INN",
+        "outlet": "POS 5- ROOM SERVICE",
+        "address": "Opposite Railway Station Main Road Muniguda",
+        "gstin": "21AEWFS9433F1ZN",
+        "sac_code": "996332",
+        "fssai_no": "10523016000047",
+        "phone": "+91-6370757541",
+        "guest_name": "Mr. KHAGESWARA SAHU",
+        "company_gst_no": "",
+        "room_no": "106",
+        "bill_no": "R.S/2913",
+        "cover": 1,
+        "date": "28/09/26",
+        "time": "22:29:04",
+        "day_session": "DINNER",
+        "first_kot_time": "22:14",
+        "kot_no": "2056",
+        "items": [
+            {"no": 1, "dish_name": "Dal Fry", "rate": 123.81, "qty": 1, "total": 123.81},
+            {"no": 2, "dish_name": "Tawa Roti", "rate": 23.81, "qty": 4, "total": 95.24}
+        ],
+        "total_qty": 5,
+        "subtotal": 219.01,
+        "cgst_rate_pct": 2.5,
+        "cgst_amount": 5.48,
+        "sgst_rate_pct": 2.5,
+        "sgst_amount": 5.48,
+        "grand_total": 230.00,
+        "amount_in_words": "Two hundred Thirty Rs Only",
+        "policy_notice": "------PLEASE DONOT PAY CASH------",
+        "cashier": "Bikram26",
+        "greeting_1": "Allow Us To Serve You Again",
+        "greeting_2": "Thank You, Visit Again !",
+        "e_and_oe": "E & O E",
+        "place_of_supply": "O.D"
+    }
 
 @app.post("/api/system/sync-master-data", tags=["System"])
 def sync_master_data():

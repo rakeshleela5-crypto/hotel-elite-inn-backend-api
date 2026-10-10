@@ -152,3 +152,17 @@ class NightAuditLog(Base):
     corporate_aging_due = Column(Float, default=0.0)
     status = Column(String(30), default="SEALED")
     timestamp = Column(DateTime, default=datetime.utcnow)
+
+
+class MenuItem(Base):
+    __tablename__ = "menu_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    item_code = Column(String(30), unique=True, index=True, nullable=False)
+    name = Column(String(120), nullable=False)
+    category = Column(String(60), nullable=False)
+    price = Column(Float, nullable=False)
+    is_veg = Column(Boolean, default=True)
+    description = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+

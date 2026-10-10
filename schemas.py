@@ -213,3 +213,41 @@ class DashboardStats(BaseModel):
     open_pos_orders: int
     corporate_aging_due: float
     active_defects: int
+
+# Menu Item Schemas
+class MenuItemCreate(BaseModel):
+    item_code: str
+    name: str
+    category: str
+    price: float
+    is_veg: bool = True
+    description: Optional[str] = None
+
+class MenuItemResponse(BaseModel):
+    id: int
+    item_code: str
+    name: str
+    category: str
+    price: float
+    is_veg: bool
+    description: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+# Property Info Schema
+class PropertyInfoResponse(BaseModel):
+    name: str
+    trade_name: str
+    location: str
+    phone: str
+    email: str
+    checkout_policy: str
+    accepted_cards: str
+    tariffs: dict
+    plans: dict
+    complimentary: List[str]
+    facilities: List[str]
+    wifi: dict
+    intercom: List[dict]
+

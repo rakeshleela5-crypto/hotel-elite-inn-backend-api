@@ -10,7 +10,7 @@ from sqlalchemy import func
 from database import engine, Base, get_db
 from models import (
     Room, Booking, RestaurantTable, PosOrder, PosOrderItem,
-    InventoryItem, CorporateAccount, RoomDefect, NightAuditLog
+    InventoryItem, CorporateAccount, RoomDefect, NightAuditLog, MenuItem
 )
 from schemas import (
     RoomCreate, RoomResponse, RoomStatusUpdate,
@@ -19,7 +19,8 @@ from schemas import (
     InventoryItemResponse, StockAdjustmentRequest,
     CorporateAccountResponse, CorporatePaymentRequest,
     RoomDefectCreate, RoomDefectResponse,
-    NightAuditRequest, NightAuditResponse, DashboardStats
+    NightAuditRequest, NightAuditResponse, DashboardStats,
+    MenuItemResponse, MenuItemCreate, PropertyInfoResponse
 )
 from seed import seed_database
 
@@ -493,3 +494,76 @@ def seal_night_audit(payload: NightAuditRequest, db: Session = Depends(get_db)):
 @app.get("/api/night-audit/logs", response_model=List[NightAuditResponse], tags=["Night Audit"])
 def list_night_audit_logs(db: Session = Depends(get_db)):
     return db.query(NightAuditLog).order_by(NightAuditLog.timestamp.desc()).all()
+
+# -------------------------------------------------------------
+# Property Information & Master Tariff (Images 1, 2, 3)
+# -------------------------------------------------------------
+@app.get("/api/property/info", response_model=PropertyInfoResponse, tags=["Property Information"])
+def get_property_info():
+    return {
+        "name": "Hotel Elite Inn",
+        "trade_name": "Hotel Elite Inn",
+        "location": "Near Railway Station Main Road, Muniguda, Dist.-Rayagada (Odisha) - 765020",
+        "phone": "+91-6370757541",
+        "email": "hotelelitinn2023@gmail.com",
+        "checkout_policy": "24 Hours Check-out",
+        "accepted_cards": "Credit cards accepted only Master & Visa",
+        "tariffs": {
+            "standard_single": 1450.0,
+            "deluxe_single": 1750.0,
+            "deluxe_double": 2250.0,
+            "executive_single": 2050.0,
+            "executive_double": 2450.0,
+            "suite_single": 3250.0,
+            "suite_double": 3850.0,
+            "extra_person": 550.0
+        },
+        "plans": {
+            "map_plan_supplement": 600.0,
+            "ap_plan_supplement": 1000.0
+        },
+        "complimentary": [
+            "Buffet Breakfast",
+            "1 Liter Mineral Water Complimentary in Room"
+        ],
+        "facilities": [
+            "Business Center",
+            "Travel Desk",
+            "Wi-Fi Internet (All Floors)",
+            "Tea / Coffee Maker in Room",
+            "L.E.D TV",
+            "24 Hours running Hot & Cold Water",
+            "Doctor on Call"
+        ],
+        "wifi": {
+            "floor_1": "TP 1ST FLOOR",
+            "floor_2": "TP 2ND FLOOR",
+            "floor_3": "TP 3RD FLOOR",
+            "password": "Elite@123"
+        },
+        "intercom": [
+            {"department": "Hotel Reception", "extension": "9"},
+            {"department": "Restaurant", "extension": "111"},
+            {"department": "Kitchen", "extension": "112"},
+            {"department": "Store Room", "extension": "113"},
+            {"department": "Laundry", "extension": "114"},
+            {"department": "GM Sir", "extension": "115"},
+            {"department": "MD Sir", "extension": "116"}
+        ]
+    }
+
+# -------------------------------------------------------------
+# Authentic F&B Restaurant Menu (Images 4 & 5)
+# -------------------------------------------------------------
+@app.get("/api/restaurant/menu", response_model=List[MenuItemResponse], tags=["Restaurant Menu"])
+def get_restaurant_menu(category: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(MenuItem)
+    if category:
+        query = query.filter(MenuItem.category == category)
+    return query.order_by(MenuItem.id.asc()).all()
+
+@app.post("/api/system/sync-master-data", tags=["System"])
+def sync_master_data():
+    seed_database()
+    return {"success": True, "message": "Master data synced: 27 physical rooms and official menu items refreshed."}
+

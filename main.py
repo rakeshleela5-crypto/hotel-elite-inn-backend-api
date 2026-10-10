@@ -32,6 +32,15 @@ MANAGER_AUTH_PIN = os.getenv("MANAGER_PIN", "4321")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Auto-run Alembic schema migrations on startup so PostgreSQL schema stays at head
+    try:
+        from alembic.config import Config
+        from alembic import command
+        alembic_cfg = Config("alembic.ini")
+        command.upgrade(alembic_cfg, "head")
+    except Exception as e:
+        print(f"Startup alembic upgrade note: {e}")
+
     # Auto-create tables & seed default data on startup
     Base.metadata.create_all(bind=engine)
     try:

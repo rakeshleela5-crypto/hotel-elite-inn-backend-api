@@ -574,6 +574,10 @@ class RestaurantSaleRecordCreate(BaseModel):
     total: float = 0.0
     pos_outlet: str = "RESTAURANT"
     table_room: str = ""
+    cost_center: Optional[str] = ""
+    auth_officer: Optional[str] = ""
+    reason: Optional[str] = ""
+    settlement_mode: Optional[str] = "Cash"
     is_management_nc: bool = False
     month: str = "JUNE-2026"
 
@@ -583,5 +587,29 @@ class RestaurantSaleRecordResponse(RestaurantSaleRecordCreate):
 
     class Config:
         from_attributes = True
+
+
+class Gstr3bStatutorySummaryResponse(BaseModel):
+    month: str
+    property_name: str
+    gstin: str
+    state_code: str
+    room_taxable_turnover: float
+    room_cgst: float
+    room_sgst: float
+    room_service_in_hotel: float
+    fnb_taxable_turnover: float
+    fnb_cgst: float
+    fnb_sgst: float
+    fnb_gross_production: float
+    management_nc_valuation: float
+    total_taxable_outward_supplies: float
+    total_central_tax_cgst: float
+    total_state_tax_sgst: float
+    total_tax_liability: float
+    grand_consolidated_turnover: float
+    hotel_bills_count: int
+    restaurant_orders_count: int
+    nc_orders_count: int
 
 

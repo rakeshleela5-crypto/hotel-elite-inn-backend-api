@@ -36,7 +36,8 @@ from schemas import (
     RoomTransferLogCreate, RoomTransferLogResponse, StayAmendRequest,
     CorporateRateLinkCreate, CorporateRateLinkResponse,
     HotelSaleRecordCreate, HotelSaleRecordResponse,
-    RestaurantSaleRecordCreate, RestaurantSaleRecordResponse
+    RestaurantSaleRecordCreate, RestaurantSaleRecordResponse,
+    Gstr3bStatutorySummaryResponse
 )
 from seed import seed_database
 
@@ -1177,6 +1178,14 @@ def get_restaurant_sale_monthly_report(
         query = query.filter(RestaurantSaleRecord.pos_outlet == pos_outlet)
     return query.order_by(RestaurantSaleRecord.running_no.asc()).all()
 
+@app.post("/api/reports/restaurant-sale-record", response_model=RestaurantSaleRecordResponse, status_code=status.HTTP_201_CREATED, tags=["Monthly Reports"])
+def create_restaurant_sale_record(record: RestaurantSaleRecordCreate, db: Session = Depends(get_db)):
+    new_rec = RestaurantSaleRecord(**record.model_dump())
+    db.add(new_rec)
+    db.commit()
+    db.refresh(new_rec)
+    return new_rec
+
 @app.get("/api/reports/restaurant-mgm-monthly", response_model=List[RestaurantSaleRecordResponse], tags=["Monthly Reports"])
 def get_restaurant_mgm_nc_report(
     month: str = Query("JUNE-2026", description="Report month filter"),
@@ -1186,5 +1195,62 @@ def get_restaurant_mgm_nc_report(
         RestaurantSaleRecord.month == month,
         RestaurantSaleRecord.is_management_nc == True
     ).order_by(RestaurantSaleRecord.running_no.asc()).all()
+
+@app.get("/api/reports/gstr3b-statutory-summary", response_model=Gstr3bStatutorySummaryResponse, tags=["Monthly Reports"])
+def get_gstr3b_statutory_summary(
+    month: str = Query("JUNE-2026", description="Report month filter"),
+    db: Session = Depends(get_db)
+):
+    hotel_records = db.query(HotelSaleRecord).filter(HotelSaleRecord.month == month).all()
+    rest_records = db.query(RestaurantSaleRecord).filter(
+        RestaurantSaleRecord.month == month,
+        RestaurantSaleRecord.is_management_nc == False
+    ).all()
+    nc_records = db.query(RestaurantSaleRecord).filter(
+        RestaurantSaleRecord.month == month,
+        RestaurantSaleRecord.is_management_nc == True
+    ).all()
+
+    room_taxable = sum(r.rent for r in hotel_records)
+    room_cgst = sum(r.cgst for r in hotel_records)
+    room_sgst = sum(r.sgst for r in hotel_records)
+    room_service_hotel = sum(r.room_service for r in hotel_records)
+
+    fnb_taxable = sum(r.amount for r in rest_records)
+    fnb_cgst = sum(r.cgst for r in rest_records)
+    fnb_sgst = sum(r.sgst for r in rest_records)
+    fnb_gross = sum(r.total for r in rest_records)
+
+    nc_valuation = sum(r.amount for r in nc_records)
+
+    total_taxable = room_taxable + fnb_taxable
+    total_cgst = room_cgst + fnb_cgst
+    total_sgst = room_sgst + fnb_sgst
+    total_tax = total_cgst + total_sgst
+    grand_turnover = total_taxable + total_tax
+
+    return Gstr3bStatutorySummaryResponse(
+        month=month,
+        property_name="HOTEL ELITE INN",
+        gstin="21AEWFS9433F1ZN",
+        state_code="21",
+        room_taxable_turnover=round(room_taxable, 2),
+        room_cgst=round(room_cgst, 2),
+        room_sgst=round(room_sgst, 2),
+        room_service_in_hotel=round(room_service_hotel, 2),
+        fnb_taxable_turnover=round(fnb_taxable, 2),
+        fnb_cgst=round(fnb_cgst, 2),
+        fnb_sgst=round(fnb_sgst, 2),
+        fnb_gross_production=round(fnb_gross, 2),
+        management_nc_valuation=round(nc_valuation, 2),
+        total_taxable_outward_supplies=round(total_taxable, 2),
+        total_central_tax_cgst=round(total_cgst, 2),
+        total_state_tax_sgst=round(total_sgst, 2),
+        total_tax_liability=round(total_tax, 2),
+        grand_consolidated_turnover=round(grand_turnover, 2),
+        hotel_bills_count=len(hotel_records),
+        restaurant_orders_count=len(rest_records),
+        nc_orders_count=len(nc_records)
+    )
 
 

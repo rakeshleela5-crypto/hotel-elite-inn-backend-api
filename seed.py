@@ -1,8 +1,11 @@
+import os
+import json
 from datetime import datetime
 from database import SessionLocal, engine, Base
 from models import (
     Room, RestaurantTable, InventoryItem, CorporateAccount, RoomDefect, MenuItem,
-    Gstr1Filing, StaffAttendance, LaundryOrder
+    Gstr1Filing, StaffAttendance, LaundryOrder,
+    HotelSaleRecord, RestaurantSaleRecord
 )
 
 def seed_database():
@@ -496,7 +499,106 @@ def seed_database():
             for l in laundry_data:
                 db.add(LaundryOrder(**l))
             db.commit()
-            print(f"✓ Seeded {len(laundry_data)} Laundry Orders.")
+        # -------------------------------------------------------------
+        # 10. Audited June Hotel Sales Records (223 Records, 26 Columns)
+        # -------------------------------------------------------------
+        if db.query(HotelSaleRecord).count() == 0:
+            data_file = os.path.join(os.path.dirname(__file__), "data", "hotelSaleJuneReportData.json")
+            if os.path.exists(data_file):
+                with open(data_file, "r", encoding="utf-8") as f:
+                    hotel_json = json.load(f)
+                for r in hotel_json:
+                    rec = HotelSaleRecord(
+                        serial_no=r.get("sNo", 0),
+                        date=r.get("date", ""),
+                        bill_no=str(r.get("billNo", "")),
+                        room_number=str(r.get("roomNo", "")),
+                        rent=float(r.get("rent") or 0),
+                        cgst=float(r.get("cgst") or 0),
+                        sgst=float(r.get("sgst") or 0),
+                        misc=float(r.get("misc") or 0),
+                        laundry=float(r.get("laundry") or 0),
+                        minibar=float(r.get("minibar") or 0),
+                        room_service=float(r.get("roomService") or 0),
+                        net_amount=float(r.get("netAmount") or 0),
+                        advance=float(r.get("advance") or 0),
+                        discount=float(r.get("discount") or 0),
+                        complimentary=float(r.get("complimentary") or 0),
+                        void_amount=float(r.get("void") or 0),
+                        allowances=float(r.get("allowances") or 0),
+                        paid_out=float(r.get("paidOut") or 0),
+                        cash=float(r.get("cash") or 0),
+                        btc=float(r.get("btc") or 0),
+                        credit_card=float(r.get("creditCard") or 0),
+                        online=float(r.get("online") or 0),
+                        remark=r.get("remark") or "",
+                        guest_name=r.get("guestName") or "",
+                        company=r.get("company") or "FIT",
+                        gstin=r.get("gstin") or "",
+                        month="JUNE-2026"
+                    )
+                    db.add(rec)
+                db.commit()
+                print(f"✓ Seeded {len(hotel_json)} Hotel Sales Records (26 Columns).")
+
+        # -------------------------------------------------------------
+        # 11. Audited June Restaurant F&B and NC Sales Records (1,388 Records)
+        # -------------------------------------------------------------
+        if db.query(RestaurantSaleRecord).count() == 0:
+            rest_data_file = os.path.join(os.path.dirname(__file__), "data", "restaurantSaleJuneReportData.json")
+            if os.path.exists(rest_data_file):
+                with open(rest_data_file, "r", encoding="utf-8") as f:
+                    rest_json = json.load(f)
+                for r in rest_json:
+                    rec = RestaurantSaleRecord(
+                        running_no=r.get("no", 0),
+                        date=r.get("date", ""),
+                        bill_no=str(r.get("billNo", "")),
+                        amount=float(r.get("amount") or 0),
+                        food=float(r.get("food") or 0),
+                        beverage=float(r.get("beverage") or 0),
+                        cgst=float(r.get("cgst") or 0),
+                        sgst=float(r.get("sgst") or 0),
+                        discount=float(r.get("discount") or 0),
+                        total=float(r.get("total") or 0),
+                        pos_outlet=r.get("pos") or "RESTAURANT",
+                        table_room=str(r.get("tableRoom") or ""),
+                        settlement_mode="Cash" if (r.get("pos") != "ROOM SERVICE") else "Room Folio",
+                        is_management_nc=False,
+                        month="JUNE-2026"
+                    )
+                    db.add(rec)
+                db.commit()
+                print(f"✓ Seeded {len(rest_json)} Commercial Restaurant Sales Records.")
+
+            mgm_data_file = os.path.join(os.path.dirname(__file__), "data", "restaurantMgmJuneReportData.json")
+            if os.path.exists(mgm_data_file):
+                with open(mgm_data_file, "r", encoding="utf-8") as f:
+                    mgm_json = json.load(f)
+                for r in mgm_json:
+                    rec = RestaurantSaleRecord(
+                        running_no=r.get("no", 0),
+                        date=r.get("date", ""),
+                        bill_no=str(r.get("billNo", "")),
+                        amount=float(r.get("amount") or 0),
+                        food=float(r.get("food") or 0),
+                        beverage=float(r.get("beverage") or 0),
+                        cgst=0.0,
+                        sgst=0.0,
+                        discount=0.0,
+                        total=0.0,
+                        pos_outlet="MANAGEMENT",
+                        table_room=str(r.get("tableRoom") or ""),
+                        cost_center="General Manager & Quality Control",
+                        auth_officer="MANAGER",
+                        reason="Management NC Dining Voucher",
+                        settlement_mode="Non-Chargeable Cost Center",
+                        is_management_nc=True,
+                        month="JUNE-2026"
+                    )
+                    db.add(rec)
+                db.commit()
+                print(f"✓ Seeded {len(mgm_json)} Management NC Dining Records.")
 
     except Exception as e:
         db.rollback()

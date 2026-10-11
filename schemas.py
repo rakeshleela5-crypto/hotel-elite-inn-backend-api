@@ -522,3 +522,66 @@ class CorporateRateLinkResponse(CorporateRateLinkCreate):
     class Config:
         from_attributes = True
 
+
+# 8. Monthly Sales Reports Schemas (June Month Audited Data)
+class HotelSaleRecordCreate(BaseModel):
+    serial_no: int
+    date: str
+    bill_no: str
+    room_number: str
+    rent: float = 0.0
+    cgst: float = 0.0
+    sgst: float = 0.0
+    misc: float = 0.0
+    laundry: float = 0.0
+    minibar: float = 0.0
+    room_service: float = 0.0
+    net_amount: float = 0.0
+    advance: float = 0.0
+    discount: float = 0.0
+    complimentary: float = 0.0
+    void_amount: float = 0.0
+    allowances: float = 0.0
+    paid_out: float = 0.0
+    cash: float = 0.0
+    btc: float = 0.0
+    credit_card: float = 0.0
+    online: float = 0.0
+    remark: Optional[str] = ""
+    guest_name: Optional[str] = ""
+    company: Optional[str] = "FIT"
+    gstin: Optional[str] = None
+    month: str = "JUNE-2026"
+
+class HotelSaleRecordResponse(HotelSaleRecordCreate):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class RestaurantSaleRecordCreate(BaseModel):
+    running_no: int
+    date: str
+    bill_no: str
+    amount: float = 0.0
+    food: float = 0.0
+    beverage: float = 0.0
+    cgst: float = 0.0
+    sgst: float = 0.0
+    discount: float = 0.0
+    total: float = 0.0
+    pos_outlet: str = "RESTAURANT"
+    table_room: str = ""
+    is_management_nc: bool = False
+    month: str = "JUNE-2026"
+
+class RestaurantSaleRecordResponse(RestaurantSaleRecordCreate):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+

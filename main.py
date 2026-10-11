@@ -13,7 +13,8 @@ from models import (
     InventoryItem, CorporateAccount, RoomDefect, NightAuditLog, MenuItem,
     Gstr1Filing, StaffAttendance, LaundryOrder,
     FolioTransaction, AdvanceDeposit, PaidOutVoucher, ForexEncashment,
-    LostAndFoundItem, RoomTransferLog, CorporateRateLink
+    LostAndFoundItem, RoomTransferLog, CorporateRateLink,
+    HotelSaleRecord, RestaurantSaleRecord
 )
 from schemas import (
     RoomCreate, RoomResponse, RoomStatusUpdate,
@@ -33,7 +34,9 @@ from schemas import (
     ForexEncashmentCreate, ForexEncashmentResponse,
     LostAndFoundItemCreate, LostAndFoundItemClaim, LostAndFoundItemResponse,
     RoomTransferLogCreate, RoomTransferLogResponse, StayAmendRequest,
-    CorporateRateLinkCreate, CorporateRateLinkResponse
+    CorporateRateLinkCreate, CorporateRateLinkResponse,
+    HotelSaleRecordCreate, HotelSaleRecordResponse,
+    RestaurantSaleRecordCreate, RestaurantSaleRecordResponse
 )
 from seed import seed_database
 
@@ -1143,4 +1146,45 @@ def link_corporate_rate(rate_data: CorporateRateLinkCreate, db: Session = Depend
     db.commit()
     db.refresh(link)
     return link
+
+
+# -------------------------------------------------------------
+# 8. Monthly Audited Sales Reports (June Month & Live Ledgers)
+# -------------------------------------------------------------
+@app.get("/api/reports/hotel-sale-monthly", response_model=List[HotelSaleRecordResponse], tags=["Monthly Reports"])
+def get_hotel_sale_monthly_report(
+    month: str = Query("JUNE-2026", description="Report month filter"),
+    db: Session = Depends(get_db)
+):
+    return db.query(HotelSaleRecord).filter(HotelSaleRecord.month == month).order_by(HotelSaleRecord.serial_no.asc()).all()
+
+@app.post("/api/reports/hotel-sale-record", response_model=HotelSaleRecordResponse, status_code=status.HTTP_201_CREATED, tags=["Monthly Reports"])
+def create_hotel_sale_record(record: HotelSaleRecordCreate, db: Session = Depends(get_db)):
+    new_rec = HotelSaleRecord(**record.model_dump())
+    db.add(new_rec)
+    db.commit()
+    db.refresh(new_rec)
+    return new_rec
+
+@app.get("/api/reports/restaurant-sale-monthly", response_model=List[RestaurantSaleRecordResponse], tags=["Monthly Reports"])
+def get_restaurant_sale_monthly_report(
+    month: str = Query("JUNE-2026", description="Report month filter"),
+    pos_outlet: Optional[str] = Query(None, description="Outlet filter (RESTAURANT, ROOM SERVICE, TAKE AWAY, MANAGEMENT)"),
+    db: Session = Depends(get_db)
+):
+    query = db.query(RestaurantSaleRecord).filter(RestaurantSaleRecord.month == month)
+    if pos_outlet and pos_outlet != "ALL":
+        query = query.filter(RestaurantSaleRecord.pos_outlet == pos_outlet)
+    return query.order_by(RestaurantSaleRecord.running_no.asc()).all()
+
+@app.get("/api/reports/restaurant-mgm-monthly", response_model=List[RestaurantSaleRecordResponse], tags=["Monthly Reports"])
+def get_restaurant_mgm_nc_report(
+    month: str = Query("JUNE-2026", description="Report month filter"),
+    db: Session = Depends(get_db)
+):
+    return db.query(RestaurantSaleRecord).filter(
+        RestaurantSaleRecord.month == month,
+        RestaurantSaleRecord.is_management_nc == True
+    ).order_by(RestaurantSaleRecord.running_no.asc()).all()
+
 

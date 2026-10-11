@@ -343,3 +343,58 @@ class CorporateRateLink(Base):
     status = Column(String(30), default="Active")
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
+class HotelSaleRecord(Base):
+    __tablename__ = "hotel_sale_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    serial_no = Column(Integer, index=True)
+    date = Column(String(30), index=True, nullable=False)
+    bill_no = Column(String(50), index=True, nullable=False)
+    room_number = Column(String(20), index=True, nullable=False)
+    rent = Column(Float, default=0.0)
+    cgst = Column(Float, default=0.0)
+    sgst = Column(Float, default=0.0)
+    misc = Column(Float, default=0.0)
+    laundry = Column(Float, default=0.0)
+    minibar = Column(Float, default=0.0)
+    room_service = Column(Float, default=0.0)
+    net_amount = Column(Float, default=0.0)
+    advance = Column(Float, default=0.0)
+    discount = Column(Float, default=0.0)
+    complimentary = Column(Float, default=0.0)
+    void_amount = Column(Float, default=0.0)
+    allowances = Column(Float, default=0.0)
+    paid_out = Column(Float, default=0.0)
+    cash = Column(Float, default=0.0)
+    btc = Column(Float, default=0.0)
+    credit_card = Column(Float, default=0.0)
+    online = Column(Float, default=0.0)
+    remark = Column(String(255), default="")
+    guest_name = Column(String(150), default="")
+    company = Column(String(150), default="FIT")
+    gstin = Column(String(50), nullable=True)
+    month = Column(String(20), default="JUNE-2026")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class RestaurantSaleRecord(Base):
+    __tablename__ = "restaurant_sale_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    running_no = Column(Integer, index=True)
+    date = Column(String(30), index=True, nullable=False)
+    bill_no = Column(String(50), index=True, nullable=False)
+    amount = Column(Float, default=0.0)
+    food = Column(Float, default=0.0)
+    beverage = Column(Float, default=0.0)
+    cgst = Column(Float, default=0.0)
+    sgst = Column(Float, default=0.0)
+    discount = Column(Float, default=0.0)
+    total = Column(Float, default=0.0)
+    pos_outlet = Column(String(50), default="RESTAURANT")
+    table_room = Column(String(50), default="")
+    is_management_nc = Column(Boolean, default=False)
+    month = Column(String(20), default="JUNE-2026")
+    created_at = Column(DateTime, default=datetime.utcnow)
+

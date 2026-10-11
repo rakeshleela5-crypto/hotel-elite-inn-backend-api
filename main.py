@@ -14,7 +14,8 @@ from models import (
     Gstr1Filing, StaffAttendance, LaundryOrder,
     FolioTransaction, AdvanceDeposit, PaidOutVoucher, ForexEncashment,
     LostAndFoundItem, RoomTransferLog, CorporateRateLink,
-    HotelSaleRecord, RestaurantSaleRecord
+    HotelSaleRecord, RestaurantSaleRecord,
+    StorePurchase, KitchenRequisition, VendorPayable
 )
 from schemas import (
     RoomCreate, RoomResponse, RoomStatusUpdate,
@@ -37,7 +38,10 @@ from schemas import (
     CorporateRateLinkCreate, CorporateRateLinkResponse,
     HotelSaleRecordCreate, HotelSaleRecordResponse,
     RestaurantSaleRecordCreate, RestaurantSaleRecordResponse,
-    Gstr3bStatutorySummaryResponse
+    Gstr3bStatutorySummaryResponse,
+    StorePurchaseCreate, StorePurchaseResponse,
+    KitchenRequisitionCreate, KitchenRequisitionResponse,
+    VendorPayableCreate, VendorPayableResponse
 )
 from seed import seed_database
 
@@ -242,7 +246,97 @@ def check_out_guest(booking_id: int, db: Session = Depends(get_db)):
     booking.status = "checked_out"
     if booking.room:
         booking.room.status = "dirty" # Needs housekeeping cleaning before next guest
-    
+
+    room_number = booking.room.number if booking.room else "101"
+
+    # 1. Gather all active advance deposits for this room and mark Adjusted
+    active_advances = db.query(AdvanceDeposit).filter(
+        AdvanceDeposit.room_number == room_number,
+        AdvanceDeposit.status == "Active"
+    ).all()
+    advance_total = sum(a.amount for a in active_advances)
+    for adv in active_advances:
+        adv.status = "Adjusted"
+
+    # 2. Gather unsettled folio transactions for this room and mark settled
+    txs = db.query(FolioTransaction).filter(
+        FolioTransaction.room_number == room_number,
+        FolioTransaction.is_settled == False
+    ).all()
+
+    laundry_total = sum(t.debit_amount for t in txs if "laundry" in t.particulars.lower() or "laundry" in t.transaction_type.lower())
+    rs_total = sum(t.debit_amount for t in txs if "f&b" in t.particulars.lower() or "food" in t.particulars.lower() or "pos" in t.particulars.lower() or "room service" in t.particulars.lower())
+    misc_total = sum(t.debit_amount for t in txs if t.debit_amount > 0 and t not in (laundry_total, rs_total))
+
+    for t in txs:
+        t.is_settled = True
+
+    # 3. Calculate Room Revenue & GST
+    rent = float(booking.total_amount or 0.0)
+    cgst = round(rent * 0.025, 2)
+    sgst = round(rent * 0.025, 2)
+    net_amt = round(rent + cgst + sgst + laundry_total + rs_total + misc_total, 2)
+    balance_payable = max(round(net_amt - advance_total, 2), 0.0)
+
+    # Determine payment breakdown
+    cash_val = balance_payable if (booking.corporate_account_id is None) else 0.0
+    btc_val = balance_payable if (booking.corporate_account_id is not None) else 0.0
+
+    current_month = datetime.utcnow().strftime("%B-%Y").upper()
+    bill_no = f"INV-{booking.id:04d}"
+    today_str = datetime.utcnow().strftime("%d-%b-%Y").upper()
+    max_sno = db.query(func.max(HotelSaleRecord.serial_no)).scalar() or 0
+
+    existing_sale = db.query(HotelSaleRecord).filter(
+        HotelSaleRecord.bill_no == bill_no,
+        HotelSaleRecord.month == current_month
+    ).first()
+
+    if existing_sale:
+        existing_sale.rent = rent
+        existing_sale.cgst = cgst
+        existing_sale.sgst = sgst
+        existing_sale.laundry = laundry_total
+        existing_sale.room_service = rs_total
+        existing_sale.misc = misc_total
+        existing_sale.net_amount = net_amt
+        existing_sale.advance = advance_total
+        existing_sale.cash = cash_val
+        existing_sale.btc = btc_val
+        existing_sale.guest_name = booking.guest_name
+        existing_sale.company = booking.corporate_account.company_name if booking.corporate_account else "FIT"
+    else:
+        new_hotel_sale = HotelSaleRecord(
+            serial_no=max_sno + 1,
+            date=today_str,
+            bill_no=bill_no,
+            room_number=room_number,
+            rent=rent,
+            cgst=cgst,
+            sgst=sgst,
+            misc=misc_total,
+            laundry=laundry_total,
+            minibar=0.0,
+            room_service=rs_total,
+            net_amount=net_amt,
+            advance=advance_total,
+            discount=0.0,
+            complimentary=0.0,
+            void_amount=0.0,
+            allowances=0.0,
+            paid_out=0.0,
+            cash=cash_val,
+            btc=btc_val,
+            credit_card=0.0,
+            online=0.0,
+            remark="Front Office Checkout",
+            guest_name=booking.guest_name,
+            company=booking.corporate_account.company_name if booking.corporate_account else "FIT",
+            gstin=booking.corporate_account.gst_number if booking.corporate_account else None,
+            month=current_month
+        )
+        db.add(new_hotel_sale)
+
     db.commit()
     db.refresh(booking)
     return booking
@@ -412,6 +506,94 @@ def settle_pos_order(order_id: int, payload: OrderSettleRequest, db: Session = D
     if order.table:
         order.table.status = "available"
         order.table.merged_into_table_id = None
+
+    current_month = payload.month or datetime.utcnow().strftime("%B-%Y").upper()
+    today_str = datetime.utcnow().strftime("%d-%b-%Y").upper()
+    room_target = payload.room_number or order.room_number or (order.table.table_number if order.table else "")
+
+    # 1. If billed to room or Room Service, automatically post to guest Folio!
+    is_room_charge = (
+        "room" in payload.payment_method.lower() or 
+        (order.order_type and order.order_type.lower() == "room_service") or
+        bool(payload.room_number)
+    )
+    if is_room_charge and room_target:
+        active_b = db.query(Booking).join(Room).filter(
+            Room.number == str(room_target),
+            Booking.status == "checked_in"
+        ).first()
+        guest_name = active_b.guest_name if active_b else f"Room {room_target} Guest"
+
+        folio_tx = FolioTransaction(
+            room_number=str(room_target),
+            folio_number=1,
+            guest_name=guest_name,
+            transaction_type="POS F&B",
+            voucher_or_bill_no=order.order_number,
+            particulars=f"Food Order #{order.order_number} ({order.order_type})",
+            sac_code="996331",
+            debit_amount=order.final_amount,
+            credit_amount=0.0,
+            tax_amount=order.tax_amount,
+            posting_date=today_str,
+            posted_by="POS STEWARD",
+            is_settled=False
+        )
+        db.add(folio_tx)
+
+    # 2. Automatically Cross-Post to RestaurantSaleRecord
+    max_rno = db.query(func.max(RestaurantSaleRecord.running_no)).scalar() or 0
+    cgst_calc = 0.0 if payload.is_management_nc else round(order.tax_amount / 2.0, 2)
+    sgst_calc = 0.0 if payload.is_management_nc else round(order.tax_amount / 2.0, 2)
+
+    existing_rest_sale = db.query(RestaurantSaleRecord).filter(
+        RestaurantSaleRecord.bill_no == order.order_number,
+        RestaurantSaleRecord.month == current_month
+    ).first()
+
+    outlet_name = "MANAGEMENT" if payload.is_management_nc else (
+        "ROOM SERVICE" if is_room_charge else (
+            order.order_type.upper() if order.order_type else "RESTAURANT"
+        )
+    )
+
+    if existing_rest_sale:
+        existing_rest_sale.amount = order.subtotal
+        existing_rest_sale.food = order.subtotal
+        existing_rest_sale.beverage = 0.0
+        existing_rest_sale.cgst = cgst_calc
+        existing_rest_sale.sgst = sgst_calc
+        existing_rest_sale.discount = payload.discount_amount
+        existing_rest_sale.total = 0.0 if payload.is_management_nc else order.final_amount
+        existing_rest_sale.pos_outlet = outlet_name
+        existing_rest_sale.table_room = str(room_target)
+        existing_rest_sale.cost_center = payload.cost_center or ""
+        existing_rest_sale.auth_officer = payload.auth_officer or ""
+        existing_rest_sale.reason = payload.reason or ""
+        existing_rest_sale.settlement_mode = payload.payment_method
+        existing_rest_sale.is_management_nc = payload.is_management_nc
+    else:
+        new_rest_sale = RestaurantSaleRecord(
+            running_no=max_rno + 1,
+            date=today_str,
+            bill_no=order.order_number,
+            amount=order.subtotal,
+            food=order.subtotal,
+            beverage=0.0,
+            cgst=cgst_calc,
+            sgst=sgst_calc,
+            discount=payload.discount_amount,
+            total=0.0 if payload.is_management_nc else order.final_amount,
+            pos_outlet=outlet_name,
+            table_room=str(room_target),
+            cost_center=payload.cost_center or "",
+            auth_officer=payload.auth_officer or "",
+            reason=payload.reason or "",
+            settlement_mode=payload.payment_method,
+            is_management_nc=payload.is_management_nc,
+            month=current_month
+        )
+        db.add(new_rest_sale)
 
     db.commit()
     return {"success": True, "order_number": order.order_number, "settled_amount": order.final_amount}
@@ -919,10 +1101,56 @@ def settle_room_folio(
     if not txs:
         raise HTTPException(status_code=404, detail="No active folio transactions found to settle")
 
+    bill_no = f"INV/{datetime.utcnow().strftime('%Y%m%d%H%M')}"
+    today_str = datetime.utcnow().strftime("%d-%b-%Y").upper()
+    current_month = datetime.utcnow().strftime("%B-%Y").upper()
+
+    total_debit = sum(t.debit_amount for t in txs)
+    total_tax = sum(t.tax_amount for t in txs)
+    guest_name = txs[0].guest_name if txs else f"Room {room_number} Guest"
+
     for t in txs:
         t.is_settled = True
 
-    bill_no = f"INV/{datetime.utcnow().strftime('%Y%m%d%H%M')}"
+    # Also auto-post/upsert to HotelSaleRecord
+    max_sno = db.query(func.max(HotelSaleRecord.serial_no)).scalar() or 0
+    existing_sale = db.query(HotelSaleRecord).filter(
+        HotelSaleRecord.bill_no == bill_no,
+        HotelSaleRecord.month == current_month
+    ).first()
+
+    if not existing_sale:
+        new_sale = HotelSaleRecord(
+            serial_no=max_sno + 1,
+            date=today_str,
+            bill_no=bill_no,
+            room_number=room_number,
+            rent=max(round(total_debit - total_tax, 2), 0.0),
+            cgst=round(total_tax / 2.0, 2),
+            sgst=round(total_tax / 2.0, 2),
+            misc=0.0,
+            laundry=0.0,
+            minibar=0.0,
+            room_service=0.0,
+            net_amount=round(total_debit, 2),
+            advance=0.0,
+            discount=0.0,
+            complimentary=0.0,
+            void_amount=0.0,
+            allowances=0.0,
+            paid_out=0.0,
+            cash=round(total_debit, 2) if payment_mode.lower() == "cash" else 0.0,
+            btc=round(total_debit, 2) if "company" in payment_mode.lower() or "btc" in payment_mode.lower() else 0.0,
+            credit_card=round(total_debit, 2) if "card" in payment_mode.lower() else 0.0,
+            online=round(total_debit, 2) if "upi" in payment_mode.lower() or "online" in payment_mode.lower() else 0.0,
+            remark=f"Folio Settled via {payment_mode}",
+            guest_name=guest_name,
+            company="FIT",
+            gstin=None,
+            month=current_month
+        )
+        db.add(new_sale)
+
     db.commit()
 
     return {
@@ -931,8 +1159,10 @@ def settle_room_folio(
         "room_number": room_number,
         "payment_mode": payment_mode,
         "settled_count": len(txs),
+        "total_settled_amount": total_debit,
         "message": f"Folio for Room {room_number} settled successfully via {payment_mode}."
     }
+
 
 @app.post("/api/pms/folios/{room_number}/reinstate", tags=["IDS Folio & Cashiering"])
 def reinstate_room_folio(
@@ -1161,6 +1391,17 @@ def get_hotel_sale_monthly_report(
 
 @app.post("/api/reports/hotel-sale-record", response_model=HotelSaleRecordResponse, status_code=status.HTTP_201_CREATED, tags=["Monthly Reports"])
 def create_hotel_sale_record(record: HotelSaleRecordCreate, db: Session = Depends(get_db)):
+    existing = db.query(HotelSaleRecord).filter(
+        HotelSaleRecord.bill_no == record.bill_no,
+        HotelSaleRecord.month == record.month
+    ).first()
+    if existing:
+        for k, v in record.model_dump().items():
+            setattr(existing, k, v)
+        db.commit()
+        db.refresh(existing)
+        return existing
+
     new_rec = HotelSaleRecord(**record.model_dump())
     db.add(new_rec)
     db.commit()
@@ -1180,6 +1421,17 @@ def get_restaurant_sale_monthly_report(
 
 @app.post("/api/reports/restaurant-sale-record", response_model=RestaurantSaleRecordResponse, status_code=status.HTTP_201_CREATED, tags=["Monthly Reports"])
 def create_restaurant_sale_record(record: RestaurantSaleRecordCreate, db: Session = Depends(get_db)):
+    existing = db.query(RestaurantSaleRecord).filter(
+        RestaurantSaleRecord.bill_no == record.bill_no,
+        RestaurantSaleRecord.month == record.month
+    ).first()
+    if existing:
+        for k, v in record.model_dump().items():
+            setattr(existing, k, v)
+        db.commit()
+        db.refresh(existing)
+        return existing
+
     new_rec = RestaurantSaleRecord(**record.model_dump())
     db.add(new_rec)
     db.commit()
@@ -1252,5 +1504,92 @@ def get_gstr3b_statutory_summary(
         restaurant_orders_count=len(rest_records),
         nc_orders_count=len(nc_records)
     )
+
+
+# -------------------------------------------------------------
+# 9. Store Inventory & Procurement (Purchases, Requisitions, Vendors)
+# -------------------------------------------------------------
+@app.get("/api/inventory/purchases", response_model=List[StorePurchaseResponse], tags=["Store Inventory"])
+def list_store_purchases(db: Session = Depends(get_db)):
+    return db.query(StorePurchase).order_by(StorePurchase.id.desc()).all()
+
+
+@app.post("/api/inventory/purchases", response_model=StorePurchaseResponse, status_code=status.HTTP_201_CREATED, tags=["Store Inventory"])
+def create_store_purchase(payload: StorePurchaseCreate, db: Session = Depends(get_db)):
+    purchase_id = payload.purchase_id or f"PUR-{datetime.utcnow().strftime('%Y%m%d%H%M')}"
+    purchase_date = payload.purchase_date or datetime.utcnow().strftime("%d-%b-%Y").upper()
+    existing = db.query(StorePurchase).filter(StorePurchase.purchase_id == purchase_id).first()
+    if existing:
+        for k, v in payload.model_dump().items():
+            setattr(existing, k, v)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    new_purchase = StorePurchase(
+        purchase_id=purchase_id,
+        vendor_name=payload.vendor_name,
+        invoice_no=payload.invoice_no,
+        purchase_date=purchase_date,
+        category=payload.category,
+        items_summary=payload.items_summary,
+        total_amount=payload.total_amount,
+        payment_status=payload.payment_status,
+        received_by=payload.received_by
+    )
+    db.add(new_purchase)
+    db.commit()
+    db.refresh(new_purchase)
+    return new_purchase
+
+
+@app.get("/api/inventory/requisitions", response_model=List[KitchenRequisitionResponse], tags=["Store Inventory"])
+def list_kitchen_requisitions(db: Session = Depends(get_db)):
+    return db.query(KitchenRequisition).order_by(KitchenRequisition.id.desc()).all()
+
+
+@app.post("/api/inventory/requisitions", response_model=KitchenRequisitionResponse, status_code=status.HTTP_201_CREATED, tags=["Store Inventory"])
+def create_kitchen_requisition(payload: KitchenRequisitionCreate, db: Session = Depends(get_db)):
+    req_id = payload.requisition_id or f"REQ-{datetime.utcnow().strftime('%Y%m%d%H%M')}"
+    issue_date = payload.issue_date or datetime.utcnow().strftime("%d-%b-%Y").upper()
+    existing = db.query(KitchenRequisition).filter(KitchenRequisition.requisition_id == req_id).first()
+    if existing:
+        for k, v in payload.model_dump().items():
+            setattr(existing, k, v)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    new_req = KitchenRequisition(
+        requisition_id=req_id,
+        issue_date=issue_date,
+        target_outlet=payload.target_outlet,
+        item_name=payload.item_name,
+        quantity_issued=payload.quantity_issued,
+        unit=payload.unit,
+        approx_cost=payload.approx_cost,
+        issued_to=payload.issued_to,
+        issued_by=payload.issued_by
+    )
+    db.add(new_req)
+    db.commit()
+    db.refresh(new_req)
+    return new_req
+
+
+@app.get("/api/inventory/vendors", response_model=List[VendorPayableResponse], tags=["Store Inventory"])
+def list_vendor_payables(db: Session = Depends(get_db)):
+    vendors = db.query(VendorPayable).order_by(VendorPayable.vendor_name.asc()).all()
+    results = []
+    for v in vendors:
+        results.append(VendorPayableResponse(
+            id=v.id,
+            vendor_name=v.vendor_name,
+            category=v.category,
+            contact=v.contact,
+            supplies_amount=v.supplies_amount,
+            paid_amount=v.paid_amount,
+            outstanding=max(round(v.supplies_amount - v.paid_amount, 2), 0.0),
+            created_at=v.created_at
+        ))
+    return results
 
 

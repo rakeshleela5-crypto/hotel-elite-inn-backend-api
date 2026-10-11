@@ -118,6 +118,12 @@ class TableMergeRequest(BaseModel):
 class OrderSettleRequest(BaseModel):
     payment_method: str = "Cash" # 'Cash', 'UPI', 'Credit Card', 'Bill to Room', 'Bill to Company'
     discount_amount: float = 0.0
+    room_number: Optional[str] = None
+    cost_center: Optional[str] = None
+    auth_officer: Optional[str] = None
+    reason: Optional[str] = None
+    is_management_nc: bool = False
+    month: Optional[str] = None
 
 # Inventory Schemas
 class InventoryItemBase(BaseModel):
@@ -611,5 +617,85 @@ class Gstr3bStatutorySummaryResponse(BaseModel):
     hotel_bills_count: int
     restaurant_orders_count: int
     nc_orders_count: int
+
+
+class StorePurchaseCreate(BaseModel):
+    purchase_id: Optional[str] = None
+    vendor_name: str
+    invoice_no: Optional[str] = None
+    purchase_date: Optional[str] = None
+    category: str = "Groceries"
+    items_summary: Optional[str] = None
+    total_amount: float = 0.0
+    payment_status: str = "Cash Paid"
+    received_by: str = "STORE INCHARGE"
+
+
+class StorePurchaseResponse(BaseModel):
+    id: int
+    purchase_id: str
+    vendor_name: str
+    invoice_no: Optional[str] = None
+    purchase_date: str
+    category: str
+    items_summary: Optional[str] = None
+    total_amount: float
+    payment_status: str
+    received_by: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class KitchenRequisitionCreate(BaseModel):
+    requisition_id: Optional[str] = None
+    issue_date: Optional[str] = None
+    target_outlet: str = "Main Kitchen"
+    item_name: str
+    quantity_issued: float = 0.0
+    unit: str = "KG"
+    approx_cost: float = 0.0
+    issued_to: str = "HEAD CHEF"
+    issued_by: str = "STORE KEEPER"
+
+
+class KitchenRequisitionResponse(BaseModel):
+    id: int
+    requisition_id: str
+    issue_date: str
+    target_outlet: str
+    item_name: str
+    quantity_issued: float
+    unit: str
+    approx_cost: float
+    issued_to: str
+    issued_by: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class VendorPayableCreate(BaseModel):
+    vendor_name: str
+    category: str = "General Supplier"
+    contact: Optional[str] = None
+    supplies_amount: float = 0.0
+    paid_amount: float = 0.0
+
+
+class VendorPayableResponse(BaseModel):
+    id: int
+    vendor_name: str
+    category: str
+    contact: Optional[str] = None
+    supplies_amount: float
+    paid_amount: float
+    outstanding: float = 0.0
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 

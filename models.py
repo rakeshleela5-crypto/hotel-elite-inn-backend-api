@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -377,6 +377,10 @@ class HotelSaleRecord(Base):
     month = Column(String(20), default="JUNE-2026")
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    __table_args__ = (
+        UniqueConstraint('bill_no', 'month', name='uq_hotel_bill_month'),
+    )
+
 
 class RestaurantSaleRecord(Base):
     __tablename__ = "restaurant_sale_records"
@@ -401,4 +405,53 @@ class RestaurantSaleRecord(Base):
     is_management_nc = Column(Boolean, default=False)
     month = Column(String(20), default="JUNE-2026")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint('bill_no', 'month', name='uq_restaurant_bill_month'),
+    )
+
+
+class StorePurchase(Base):
+    __tablename__ = "store_purchases"
+
+    id = Column(Integer, primary_key=True, index=True)
+    purchase_id = Column(String(50), unique=True, index=True, nullable=False) # e.g. "PUR-2026-001"
+    vendor_name = Column(String(150), index=True, nullable=False)
+    invoice_no = Column(String(50), nullable=True)
+    purchase_date = Column(String(30), index=True, nullable=False)
+    category = Column(String(50), default="Groceries")
+    items_summary = Column(Text, nullable=True)
+    total_amount = Column(Float, default=0.0)
+    payment_status = Column(String(50), default="Cash Paid") # 'Cash Paid', 'Credit', 'UPI Paid'
+    received_by = Column(String(100), default="STORE INCHARGE")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class KitchenRequisition(Base):
+    __tablename__ = "kitchen_requisitions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    requisition_id = Column(String(50), unique=True, index=True, nullable=False) # e.g. "REQ-2026-001"
+    issue_date = Column(String(30), index=True, nullable=False)
+    target_outlet = Column(String(50), default="Main Kitchen") # 'Main Kitchen', 'Tandoor Section', 'Bakery'
+    item_name = Column(String(100), nullable=False)
+    quantity_issued = Column(Float, default=0.0)
+    unit = Column(String(20), default="KG")
+    approx_cost = Column(Float, default=0.0)
+    issued_to = Column(String(100), default="HEAD CHEF")
+    issued_by = Column(String(100), default="STORE KEEPER")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class VendorPayable(Base):
+    __tablename__ = "vendor_payables"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vendor_name = Column(String(150), unique=True, index=True, nullable=False)
+    category = Column(String(100), default="General Supplier")
+    contact = Column(String(100), nullable=True)
+    supplies_amount = Column(Float, default=0.0)
+    paid_amount = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 

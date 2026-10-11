@@ -5,7 +5,8 @@ from database import SessionLocal, engine, Base
 from models import (
     Room, RestaurantTable, InventoryItem, CorporateAccount, RoomDefect, MenuItem,
     Gstr1Filing, StaffAttendance, LaundryOrder,
-    HotelSaleRecord, RestaurantSaleRecord
+    HotelSaleRecord, RestaurantSaleRecord,
+    StorePurchase, KitchenRequisition, VendorPayable
 )
 
 def seed_database():
@@ -600,8 +601,76 @@ def seed_database():
                 db.commit()
                 print(f"✓ Seeded {len(mgm_json)} Management NC Dining Records.")
 
+        # -------------------------------------------------------------
+        # 12. Store Inventory & Kitchen Requisitions Baseline
+        # -------------------------------------------------------------
+        if db.query(StorePurchase).count() == 0:
+            purchases_init = [
+                {"purchase_id": "PUR-202609-001", "vendor_name": "Rayagada Daily Sabzi Mandi Traders", "invoice_no": "MND-781", "purchase_date": "21-SEP-2026", "category": "Vegetables", "items_summary": "Potatoes (50kg), Onions (40kg), Tomatoes (30kg), Ginger & Garlic (10kg)", "total_amount": 4850.0, "payment_status": "Cash Paid", "received_by": "Chef Jagabandhu Sahu"},
+                {"purchase_id": "PUR-202609-002", "vendor_name": "Maa Majhighariani Dairy Cooperative", "invoice_no": "MMD-1092", "purchase_date": "21-SEP-2026", "category": "Dairy & Paneer", "items_summary": "Fresh Cow Milk (60 Ltrs), Fresh Malai Paneer (15 kg), Desi Curd (20 kg)", "total_amount": 6420.0, "payment_status": "Credit", "received_by": "Store Incharge Niranjan"},
+                {"purchase_id": "PUR-202609-003", "vendor_name": "Utkal Poultry & Country Chicken Hub", "invoice_no": "UPC-445", "purchase_date": "21-SEP-2026", "category": "Poultry & Meat", "items_summary": "Country Chicken dressed (25 kg), Broiler Chicken (20 kg)", "total_amount": 9800.0, "payment_status": "UPI Paid", "received_by": "Chef Jagabandhu Sahu"},
+                {"purchase_id": "PUR-202609-004", "vendor_name": "Jaykaypur Wholesale Grocery Mart", "invoice_no": "JKP-902", "purchase_date": "20-SEP-2026", "category": "Groceries & Rice", "items_summary": "Premium Basmati Rice (100 kg), Mustard Oil (30 Ltrs), Toor Dal (50 kg)", "total_amount": 18400.0, "payment_status": "Credit", "received_by": "Store Incharge Niranjan"}
+            ]
+            for p in purchases_init:
+                db.add(StorePurchase(**p))
+            db.commit()
+            print("✓ Seeded Store Purchases Baseline.")
+
+        if db.query(KitchenRequisition).count() == 0:
+            reqs_init = [
+                {"requisition_id": "REQ-202609-01", "issue_date": "21-SEP-2026", "target_outlet": "Main Kitchen", "item_name": "Fresh Malai Paneer", "quantity_issued": 8.0, "unit": "KG", "approx_cost": 2560.0, "issued_to": "Chef Jagabandhu Sahu", "issued_by": "Store Manager"},
+                {"requisition_id": "REQ-202609-02", "issue_date": "21-SEP-2026", "target_outlet": "Main Kitchen", "item_name": "Country Chicken dressed", "quantity_issued": 12.0, "unit": "KG", "approx_cost": 3360.0, "issued_to": "Chef Jagabandhu Sahu", "issued_by": "Store Manager"},
+                {"requisition_id": "REQ-202609-03", "issue_date": "21-SEP-2026", "target_outlet": "Main Kitchen", "item_name": "Premium Basmati Rice", "quantity_issued": 25.0, "unit": "KG", "approx_cost": 2250.0, "issued_to": "Asst Chef Kailash", "issued_by": "Store Manager"}
+            ]
+            for r in reqs_init:
+                db.add(KitchenRequisition(**r))
+            db.commit()
+            print("✓ Seeded Kitchen Requisitions Baseline.")
+
+        if db.query(VendorPayable).count() == 0:
+            vendors_init = [
+                {"vendor_name": "Maa Majhighariani Daily Sabzi Mandi", "category": "Fresh Vegetables & Herbs", "contact": "Kishore Sahu (+91 94371 88201)", "supplies_amount": 24800.0, "paid_amount": 18000.0},
+                {"vendor_name": "Rayagada Broiler & Mutton Center", "category": "Poultry, Chicken & Mutton Cuts", "contact": "M. Ramesh (+91 98612 44902)", "supplies_amount": 46500.0, "paid_amount": 32000.0},
+                {"vendor_name": "Om Sai Dairy & Milk Cooperative", "category": "Pure Milk, Paneer, Curd, Butter", "contact": "G. Patnaik (+91 82490 33811)", "supplies_amount": 18400.0, "paid_amount": 12000.0},
+                {"vendor_name": "Pooja Grocery & Spices Wholesale", "category": "Basmati Rice, Dal, Edible Oil, Spices", "contact": "Suresh Agarwal (+91 94370 22105)", "supplies_amount": 35900.0, "paid_amount": 20000.0},
+                {"vendor_name": "Rayagada Commercial Gas Agency", "category": "Commercial 19kg LPG Cylinders", "contact": "Delivery Desk (+91 06856 22214)", "supplies_amount": 12450.0, "paid_amount": 7400.0}
+            ]
+            for v in vendors_init:
+                db.add(VendorPayable(**v))
+            db.commit()
+            print("✓ Seeded Vendor Payables.")
+
+        # -------------------------------------------------------------
+        # 13. October 2026 Master Audited Sales Records Baseline
+        # -------------------------------------------------------------
+        if db.query(HotelSaleRecord).filter(HotelSaleRecord.month == "OCTOBER-2026").count() == 0:
+            oct_hotel_samples = [
+                {"serial_no": 1, "date": "01-OCT-2026", "bill_no": "INV/202610/001", "room_number": "101", "rent": 2050.0, "cgst": 51.25, "sgst": 51.25, "misc": 0.0, "laundry": 0.0, "minibar": 0.0, "room_service": 380.0, "net_amount": 2532.5, "advance": 0.0, "discount": 0.0, "complimentary": 0.0, "void_amount": 0.0, "allowances": 0.0, "paid_out": 0.0, "cash": 2532.5, "btc": 0.0, "credit_card": 0.0, "online": 0.0, "remark": "Cash Settled", "guest_name": "Mr. ASHOK KUMAR PATNAIK", "company": "FIT", "gstin": None, "month": "OCTOBER-2026"},
+                {"serial_no": 2, "date": "01-OCT-2026", "bill_no": "INV/202610/002", "room_number": "201", "rent": 2450.0, "cgst": 61.25, "sgst": 61.25, "misc": 0.0, "laundry": 120.0, "minibar": 0.0, "room_service": 650.0, "net_amount": 3342.5, "advance": 1000.0, "discount": 0.0, "complimentary": 0.0, "void_amount": 0.0, "allowances": 0.0, "paid_out": 0.0, "cash": 0.0, "btc": 2342.5, "credit_card": 0.0, "online": 0.0, "remark": "JK PAPER LTD", "guest_name": "Mr. SANJEEV SHARMA", "company": "JK PAPER LIMITED", "gstin": "21AAACJ0123L1Z8", "month": "OCTOBER-2026"},
+                {"serial_no": 3, "date": "02-OCT-2026", "bill_no": "INV/202610/003", "room_number": "301", "rent": 2050.0, "cgst": 51.25, "sgst": 51.25, "misc": 0.0, "laundry": 0.0, "minibar": 0.0, "room_service": 0.0, "net_amount": 2152.5, "advance": 0.0, "discount": 0.0, "complimentary": 0.0, "void_amount": 0.0, "allowances": 0.0, "paid_out": 0.0, "cash": 0.0, "btc": 0.0, "credit_card": 2152.5, "online": 0.0, "remark": "HDFC POS", "guest_name": "Mr. B. K. MOHANTY", "company": "FIT", "gstin": None, "month": "OCTOBER-2026"},
+                {"serial_no": 4, "date": "02-OCT-2026", "bill_no": "INV/202610/004", "room_number": "105", "rent": 2050.0, "cgst": 51.25, "sgst": 51.25, "misc": 0.0, "laundry": 0.0, "minibar": 0.0, "room_service": 420.0, "net_amount": 2572.5, "advance": 0.0, "discount": 0.0, "complimentary": 0.0, "void_amount": 0.0, "allowances": 0.0, "paid_out": 0.0, "cash": 0.0, "btc": 0.0, "credit_card": 0.0, "online": 2572.5, "remark": "GPay UPI", "guest_name": "Mr. CHIRANJEEVI RAO", "company": "FIT", "gstin": None, "month": "OCTOBER-2026"},
+                {"serial_no": 5, "date": "03-OCT-2026", "bill_no": "INV/202610/005", "room_number": "205", "rent": 2050.0, "cgst": 51.25, "sgst": 51.25, "misc": 0.0, "laundry": 0.0, "minibar": 0.0, "room_service": 0.0, "net_amount": 2152.5, "advance": 0.0, "discount": 0.0, "complimentary": 0.0, "void_amount": 0.0, "allowances": 0.0, "paid_out": 0.0, "cash": 2152.5, "btc": 0.0, "credit_card": 0.0, "online": 0.0, "remark": "Cash Settled", "guest_name": "Mr. DEBASISH DASH", "company": "FIT", "gstin": None, "month": "OCTOBER-2026"}
+            ]
+            for h in oct_hotel_samples:
+                db.add(HotelSaleRecord(**h))
+            db.commit()
+            print("✓ Seeded October 2026 Hotel Sales Baseline.")
+
+        if db.query(RestaurantSaleRecord).filter(RestaurantSaleRecord.month == "OCTOBER-2026").count() == 0:
+            oct_rest_samples = [
+                {"running_no": 1, "date": "01-OCT-2026", "bill_no": "REST/OCT-001", "amount": 650.0, "food": 580.0, "beverage": 70.0, "cgst": 16.25, "sgst": 16.25, "discount": 0.0, "total": 682.5, "pos_outlet": "RESTAURANT", "table_room": "T-1", "settlement_mode": "Cash", "is_management_nc": False, "month": "OCTOBER-2026"},
+                {"running_no": 2, "date": "01-OCT-2026", "bill_no": "REST/OCT-002", "amount": 1250.0, "food": 1150.0, "beverage": 100.0, "cgst": 31.25, "sgst": 31.25, "discount": 0.0, "total": 1312.5, "pos_outlet": "RESTAURANT", "table_room": "T-3", "settlement_mode": "UPI", "is_management_nc": False, "month": "OCTOBER-2026"},
+                {"running_no": 3, "date": "02-OCT-2026", "bill_no": "REST/OCT-003", "amount": 380.0, "food": 380.0, "beverage": 0.0, "cgst": 9.5, "sgst": 9.5, "discount": 0.0, "total": 399.0, "pos_outlet": "ROOM SERVICE", "table_room": "101", "settlement_mode": "Room Folio", "is_management_nc": False, "month": "OCTOBER-2026"},
+                {"running_no": 4, "date": "02-OCT-2026", "bill_no": "NC/OCT-001", "amount": 450.0, "food": 450.0, "beverage": 0.0, "cgst": 0.0, "sgst": 0.0, "discount": 0.0, "total": 0.0, "pos_outlet": "MANAGEMENT", "table_room": "T-VIP", "cost_center": "General Manager Courtesy", "auth_officer": "MANAGER", "reason": "VIP Railway Inspector Courtesy", "settlement_mode": "Non-Chargeable Cost Center", "is_management_nc": True, "month": "OCTOBER-2026"}
+            ]
+            for r in oct_rest_samples:
+                db.add(RestaurantSaleRecord(**r))
+            db.commit()
+            print("✓ Seeded October 2026 Restaurant Sales Baseline.")
+
     except Exception as e:
         db.rollback()
         print(f"Seeding note: {e}")
     finally:
         db.close()
+

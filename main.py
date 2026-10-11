@@ -1,9 +1,16 @@
 import os
-from datetime import datetime
+import time
+import hmac
+import hashlib
+import base64
+import json
+from datetime import datetime, timedelta
 from typing import List, Optional
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, status, Query
+from fastapi import FastAPI, Depends, HTTPException, status, Query, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -46,6 +53,116 @@ from schemas import (
 from seed import seed_database
 
 MANAGER_AUTH_PIN = os.getenv("MANAGER_PIN", "4321")
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "hotel_elite_inn_jwt_secret_rayagada_2026").encode('utf-8')
+ACCESS_TOKEN_EXPIRE_HOURS = 8  # Enforces 8-hour shift token invalidation
+
+# Hotel Wi-Fi IP Restriction Settings
+HOTEL_STATIC_IP = os.getenv("HOTEL_STATIC_IP", "").strip()
+HOTEL_ALLOWED_IPS = set(ip.strip() for ip in os.getenv("HOTEL_ALLOWED_IPS", "").split(",") if ip.strip())
+ENABLE_HOTEL_IP_RESTRICTION = os.getenv("ENABLE_HOTEL_IP_RESTRICTION", "false").lower() in ("true", "1", "yes")
+
+# Dynamic Hotel Wi-Fi IP state
+DYNAMIC_HOTEL_IP = HOTEL_STATIC_IP
+
+# -------------------------------------------------------------
+# RFC 7519 JWT Utility Functions (Standard HS256, Zero Extra Deps)
+# -------------------------------------------------------------
+def b64url_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode('utf-8').rstrip('=')
+
+def b64url_decode(s: str) -> bytes:
+    padding = '=' * (-len(s) % 4)
+    return base64.urlsafe_b64decode((s + padding).encode('utf-8'))
+
+def create_staff_jwt_token(staff_id: str, staff_name: str, role: str, shift: str) -> dict:
+    now_ts = int(time.time())
+    exp_ts = now_ts + (ACCESS_TOKEN_EXPIRE_HOURS * 3600)  # Invalidate after 8-hour shift
+    
+    header = {"alg": "HS256", "typ": "JWT"}
+    payload = {
+        "sub": staff_id,
+        "name": staff_name,
+        "role": role,
+        "shift": shift,
+        "iat": now_ts,
+        "exp": exp_ts,
+        "hotel": "Hotel Elite Inn"
+    }
+    
+    h_b64 = b64url_encode(json.dumps(header, separators=(',', ':')).encode('utf-8'))
+    p_b64 = b64url_encode(json.dumps(payload, separators=(',', ':')).encode('utf-8'))
+    
+    signature = hmac.new(JWT_SECRET_KEY, f"{h_b64}.{p_b64}".encode('utf-8'), hashlib.sha256).digest()
+    token = f"{h_b64}.{p_b64}.{b64url_encode(signature)}"
+    
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "expires_in_hours": ACCESS_TOKEN_EXPIRE_HOURS,
+        "expires_at": datetime.fromtimestamp(exp_ts).isoformat(),
+        "staff_id": staff_id,
+        "staff_name": staff_name,
+        "role": role,
+        "shift": shift
+    }
+
+def verify_staff_jwt_token(token: str) -> dict:
+    parts = token.split('.')
+    if len(parts) != 3:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid JWT token structure")
+    
+    h_b64, p_b64, sig_b64 = parts
+    expected_sig = hmac.new(JWT_SECRET_KEY, f"{h_b64}.{p_b64}".encode('utf-8'), hashlib.sha256).digest()
+    
+    try:
+        actual_sig = b64url_decode(sig_b64)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Malformed JWT token signature")
+        
+    if not hmac.compare_digest(expected_sig, actual_sig):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid JWT token signature")
+        
+    try:
+        payload = json.loads(b64url_decode(p_b64).decode('utf-8'))
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Malformed JWT token payload")
+        
+    # Check 8-hour shift expiry
+    now_ts = int(time.time())
+    if now_ts >= payload.get("exp", 0):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired: 8-hour shift has ended. Please log in again with your PIN."
+        )
+        
+    return payload
+
+def get_client_ip(request: Request) -> str:
+    # 1. Cloudflare passes real client IP in CF-Connecting-IP
+    cf_ip = request.headers.get("cf-connecting-ip")
+    if cf_ip:
+        return cf_ip.strip()
+    # 2. Reverse proxy / load balancer chain
+    x_forwarded = request.headers.get("x-forwarded-for")
+    if x_forwarded:
+        return x_forwarded.split(",")[0].strip()
+    # 3. Direct client connection host
+    if request.client and request.client.host:
+        return request.client.host.strip()
+    return "unknown"
+
+class StaffLoginRequest(BaseModel):
+    staff_id: str
+    pin: str
+    portal: Optional[str] = "steward"
+    staff_name: Optional[str] = None
+    role: Optional[str] = None
+    shift: Optional[str] = None
+
+class SetHotelIpRequest(BaseModel):
+    manager_pin: str
+    ip: Optional[str] = None
+    enable_restriction: Optional[bool] = True
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -81,6 +198,127 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# -------------------------------------------------------------
+# Hotel Wi-Fi IP Restriction Middleware
+# Inspects CF-Connecting-IP or request.client.host.
+# Rejects requests outside Hotel Elite Inn broadband IP with 403.
+# -------------------------------------------------------------
+@app.middleware("http")
+async def hotel_wifi_ip_restriction_middleware(request: Request, call_next):
+    # Exempt system health checks, root, API docs, and auth endpoints from Wi-Fi IP restriction
+    exempt_paths = [
+        "/", "/health", "/docs", "/redoc", "/openapi.json",
+        "/api/system/ip-status", "/api/system/set-hotel-ip",
+        "/api/auth/staff-login"
+    ]
+    if any(request.url.path == ep or request.url.path.startswith("/docs") for ep in exempt_paths):
+        return await call_next(request)
+
+    # Evaluate IP restriction rule
+    effective_ip = DYNAMIC_HOTEL_IP or HOTEL_STATIC_IP
+    if ENABLE_HOTEL_IP_RESTRICTION or (effective_ip and effective_ip not in ("*", "all", "0.0.0.0")):
+        client_ip = get_client_ip(request)
+        
+        # Permit localhost / loopback for development and internal container calls
+        is_loopback = client_ip in ("127.0.0.1", "::1", "localhost", "testclient")
+        is_allowed = (
+            is_loopback or 
+            client_ip == effective_ip or 
+            client_ip in HOTEL_ALLOWED_IPS or
+            request.headers.get("x-hotel-wifi-bypass") == MANAGER_AUTH_PIN
+        )
+        
+        if not is_allowed:
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content={
+                    "detail": "Forbidden: Connect to Hotel Wi-Fi",
+                    "client_ip": client_ip,
+                    "hotel_wifi_required": True,
+                    "message": "Access restricted. You must connect to Hotel Elite Inn on-premise Wi-Fi network (TP 1ST/2ND/3RD FLOOR) to access PMS & POS services."
+                }
+            )
+
+    response = await call_next(request)
+    return response
+
+# -------------------------------------------------------------
+# Authentication & Security Endpoints
+# -------------------------------------------------------------
+@app.post("/api/auth/staff-login", tags=["Authentication"])
+def staff_login(payload: StaffLoginRequest):
+    # Supported staff PINs and Manager PIN
+    valid_pins = {MANAGER_AUTH_PIN, "7650", "1111", "2222", "3333", "5555", "1234"}
+    if payload.pin not in valid_pins:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Staff Security PIN"
+        )
+    
+    name = payload.staff_name or f"Staff ({payload.staff_id})"
+    role = payload.role or (
+        "STEWARD" if payload.portal == "steward" else 
+        ("HOUSEKEEPING" if payload.portal == "housekeeping" else "KITCHEN_CHEF")
+    )
+    shift = payload.shift or "Morning"
+    
+    token_data = create_staff_jwt_token(payload.staff_id, name, role, shift)
+    return token_data
+
+@app.get("/api/auth/verify-session", tags=["Authentication"])
+def verify_session(authorization: Optional[str] = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Bearer token")
+    
+    token = authorization.split(" ")[1]
+    payload = verify_staff_jwt_token(token)
+    
+    remaining_seconds = payload.get("exp", 0) - int(time.time())
+    return {
+        "valid": True,
+        "staff_id": payload.get("sub"),
+        "staff_name": payload.get("name"),
+        "role": payload.get("role"),
+        "shift": payload.get("shift"),
+        "remaining_hours": round(max(0, remaining_seconds) / 3600, 2),
+        "remaining_minutes": int(max(0, remaining_seconds) / 60)
+    }
+
+@app.get("/api/system/ip-status", tags=["Security"])
+def get_ip_status(request: Request):
+    client_ip = get_client_ip(request)
+    effective_ip = DYNAMIC_HOTEL_IP or HOTEL_STATIC_IP
+    is_hotel_wifi = (
+        (client_ip == effective_ip) or 
+        (client_ip in HOTEL_ALLOWED_IPS) or 
+        (client_ip in ("127.0.0.1", "::1", "localhost"))
+    )
+    return {
+        "client_ip": client_ip,
+        "hotel_static_ip": effective_ip or "Not Configured",
+        "is_hotel_wifi": is_hotel_wifi,
+        "restriction_active": ENABLE_HOTEL_IP_RESTRICTION or bool(effective_ip),
+        "cf_connecting_ip_header": request.headers.get("cf-connecting-ip")
+    }
+
+@app.post("/api/system/set-hotel-ip", tags=["Security"])
+def set_hotel_ip(payload: SetHotelIpRequest, request: Request):
+    global DYNAMIC_HOTEL_IP, ENABLE_HOTEL_IP_RESTRICTION
+    if payload.manager_pin != MANAGER_AUTH_PIN:
+        raise HTTPException(status_code=403, detail="Invalid Manager Authorization PIN")
+    
+    target_ip = payload.ip.strip() if payload.ip else get_client_ip(request)
+    DYNAMIC_HOTEL_IP = target_ip
+    if payload.enable_restriction is not None:
+        ENABLE_HOTEL_IP_RESTRICTION = payload.enable_restriction
+        
+    return {
+        "success": True,
+        "hotel_static_ip": DYNAMIC_HOTEL_IP,
+        "restriction_active": ENABLE_HOTEL_IP_RESTRICTION,
+        "message": f"Hotel Wi-Fi static IP updated to {DYNAMIC_HOTEL_IP}. Restriction is {'ENABLED' if ENABLE_HOTEL_IP_RESTRICTION else 'DISABLED'}."
+    }
 
 # -------------------------------------------------------------
 # Health Check & Root

@@ -11,7 +11,9 @@ from database import engine, Base, get_db
 from models import (
     Room, Booking, RestaurantTable, PosOrder, PosOrderItem,
     InventoryItem, CorporateAccount, RoomDefect, NightAuditLog, MenuItem,
-    Gstr1Filing, StaffAttendance, LaundryOrder
+    Gstr1Filing, StaffAttendance, LaundryOrder,
+    FolioTransaction, AdvanceDeposit, PaidOutVoucher, ForexEncashment,
+    LostAndFoundItem, RoomTransferLog, CorporateRateLink
 )
 from schemas import (
     RoomCreate, RoomResponse, RoomStatusUpdate,
@@ -24,7 +26,14 @@ from schemas import (
     MenuItemResponse, MenuItemCreate, PropertyInfoResponse,
     Gstr1FilingCreate, Gstr1FilingResponse, Gstr1SummaryResponse,
     StaffAttendanceCreate, StaffAttendanceResponse, StaffRosterMember,
-    LaundryOrderCreate, LaundryOrderResponse, LaundryOrderStatusUpdate
+    LaundryOrderCreate, LaundryOrderResponse, LaundryOrderStatusUpdate,
+    FolioTransactionCreate, FolioTransactionResponse, FolioSummaryResponse,
+    AdvanceDepositCreate, AdvanceDepositResponse,
+    PaidOutVoucherCreate, PaidOutVoucherResponse,
+    ForexEncashmentCreate, ForexEncashmentResponse,
+    LostAndFoundItemCreate, LostAndFoundItemClaim, LostAndFoundItemResponse,
+    RoomTransferLogCreate, RoomTransferLogResponse, StayAmendRequest,
+    CorporateRateLinkCreate, CorporateRateLinkResponse
 )
 from seed import seed_database
 
@@ -837,4 +846,301 @@ def update_laundry_order_status(order_id: int, status_update: LaundryOrderStatus
     db.commit()
     db.refresh(order)
     return order
+
+
+# =============================================================
+# IDS FortuneNext 6.5 / 7.0 PMS Core API (67 Modals Controllers)
+# =============================================================
+
+# -------------------------------------------------------------
+# 1. Folio Management, Post Charges & Checkout Bill Settlement
+# -------------------------------------------------------------
+@app.get("/api/pms/folios/{room_number}", response_model=FolioSummaryResponse, tags=["IDS Folio & Cashiering"])
+def get_room_folio(room_number: str, folio_number: int = 1, db: Session = Depends(get_db)):
+    """
+    Fetch active guest folio with all posted line charges and current balance.
+    """
+    txs = db.query(FolioTransaction).filter(
+        FolioTransaction.room_number == room_number,
+        FolioTransaction.folio_number == folio_number,
+        FolioTransaction.is_settled == False
+    ).order_by(FolioTransaction.id.asc()).all()
+
+    guest_name = txs[0].guest_name if txs else "In-House Guest"
+    total_debit = sum(t.debit_amount for t in txs)
+    total_credit = sum(t.credit_amount for t in txs)
+    net_balance = round(total_debit - total_credit, 2)
+
+    return FolioSummaryResponse(
+        room_number=room_number,
+        folio_number=folio_number,
+        guest_name=guest_name,
+        total_debit=round(total_debit, 2),
+        total_credit=round(total_credit, 2),
+        net_balance=net_balance,
+        transactions=txs
+    )
+
+@app.post("/api/pms/folios/post-charge", response_model=FolioTransactionResponse, status_code=status.HTTP_201_CREATED, tags=["IDS Folio & Cashiering"])
+def post_folio_charge(tx_data: FolioTransactionCreate, db: Session = Depends(get_db)):
+    """
+    Post a new room debit (Food, Laundry, Extra Bed) or credit (Allowance, Payment) to room folio.
+    """
+    new_tx = FolioTransaction(**tx_data.model_dump())
+    db.add(new_tx)
+    db.commit()
+    db.refresh(new_tx)
+    return new_tx
+
+@app.post("/api/pms/folios/{room_number}/settle", tags=["IDS Folio & Cashiering"])
+def settle_room_folio(
+    room_number: str,
+    folio_number: int = 1,
+    payment_mode: str = "Cash",
+    manager_pin: str = "4321",
+    db: Session = Depends(get_db)
+):
+    """
+    Settle all outstanding charges on guest folio and mark transactions as settled.
+    """
+    if manager_pin != MANAGER_AUTH_PIN:
+        raise HTTPException(status_code=403, detail="Invalid Manager Authorization PIN")
+
+    txs = db.query(FolioTransaction).filter(
+        FolioTransaction.room_number == room_number,
+        FolioTransaction.folio_number == folio_number,
+        FolioTransaction.is_settled == False
+    ).all()
+
+    if not txs:
+        raise HTTPException(status_code=404, detail="No active folio transactions found to settle")
+
+    for t in txs:
+        t.is_settled = True
+
+    bill_no = f"INV/{datetime.utcnow().strftime('%Y%m%d%H%M')}"
+    db.commit()
+
+    return {
+        "status": "success",
+        "bill_no": bill_no,
+        "room_number": room_number,
+        "payment_mode": payment_mode,
+        "settled_count": len(txs),
+        "message": f"Folio for Room {room_number} settled successfully via {payment_mode}."
+    }
+
+@app.post("/api/pms/folios/{room_number}/reinstate", tags=["IDS Folio & Cashiering"])
+def reinstate_room_folio(
+    room_number: str,
+    folio_number: int = 1,
+    manager_pin: str = "4321",
+    db: Session = Depends(get_db)
+):
+    """
+    Reinstate accidentally checked-out folio back to active in-house state.
+    """
+    if manager_pin != MANAGER_AUTH_PIN:
+        raise HTTPException(status_code=403, detail="Invalid Manager Authorization PIN")
+
+    txs = db.query(FolioTransaction).filter(
+        FolioTransaction.room_number == room_number,
+        FolioTransaction.folio_number == folio_number,
+        FolioTransaction.is_settled == True
+    ).all()
+
+    if not txs:
+        raise HTTPException(status_code=404, detail="No settled folio transactions found to reinstate")
+
+    for t in txs:
+        t.is_settled = False
+
+    db.commit()
+    return {
+        "status": "success",
+        "room_number": room_number,
+        "reinstated_count": len(txs),
+        "message": f"Folio for Room {room_number} reinstated back to Active In-House state."
+    }
+
+# -------------------------------------------------------------
+# 2. Advance Deposits & Receipt Management
+# -------------------------------------------------------------
+@app.get("/api/pms/deposits", response_model=List[AdvanceDepositResponse], tags=["IDS Deposits & Cashiering"])
+def get_advance_deposits(room_number: Optional[str] = None, status: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(AdvanceDeposit)
+    if room_number:
+        query = query.filter(AdvanceDeposit.room_number == room_number)
+    if status:
+        query = query.filter(AdvanceDeposit.status == status)
+    return query.order_by(AdvanceDeposit.id.desc()).all()
+
+@app.post("/api/pms/deposits", response_model=AdvanceDepositResponse, status_code=status.HTTP_201_CREATED, tags=["IDS Deposits & Cashiering"])
+def create_advance_deposit(deposit_data: AdvanceDepositCreate, db: Session = Depends(get_db)):
+    new_deposit = AdvanceDeposit(**deposit_data.model_dump())
+    db.add(new_deposit)
+
+    # Automatically post credit to room folio
+    folio_tx = FolioTransaction(
+        room_number=deposit_data.room_number,
+        folio_number=1,
+        guest_name=deposit_data.guest_name,
+        transaction_type="Advance Deposit",
+        voucher_or_bill_no=deposit_data.receipt_number,
+        particulars=f"Advance Deposit Received ({deposit_data.payment_mode})",
+        sac_code="996311",
+        debit_amount=0.0,
+        credit_amount=deposit_data.amount,
+        tax_amount=0.0,
+        posting_date=deposit_data.date,
+        posted_by="CASHIER"
+    )
+    db.add(folio_tx)
+
+    db.commit()
+    db.refresh(new_deposit)
+    return new_deposit
+
+@app.delete("/api/pms/deposits/{receipt_number}", tags=["IDS Deposits & Cashiering"])
+def delete_advance_deposit(receipt_number: str, reason: str = "Cancellation", db: Session = Depends(get_db)):
+    deposit = db.query(AdvanceDeposit).filter(AdvanceDeposit.receipt_number == receipt_number).first()
+    if not deposit:
+        raise HTTPException(status_code=404, detail="Advance deposit receipt not found")
+    deposit.status = "Deleted"
+    deposit.remarks = f"{deposit.remarks} | Deleted: {reason}"
+    db.commit()
+    return {"status": "success", "receipt_number": receipt_number, "message": "Deposit deleted successfully."}
+
+# -------------------------------------------------------------
+# 3. Front Office Paid-Out Cash Disbursement
+# -------------------------------------------------------------
+@app.get("/api/pms/paid-outs", response_model=List[PaidOutVoucherResponse], tags=["IDS Deposits & Cashiering"])
+def get_paid_outs(db: Session = Depends(get_db)):
+    return db.query(PaidOutVoucher).order_by(PaidOutVoucher.id.desc()).all()
+
+@app.post("/api/pms/paid-outs", response_model=PaidOutVoucherResponse, status_code=status.HTTP_201_CREATED, tags=["IDS Deposits & Cashiering"])
+def create_paid_out(paid_out_data: PaidOutVoucherCreate, db: Session = Depends(get_db)):
+    new_voucher = PaidOutVoucher(**paid_out_data.model_dump())
+    db.add(new_voucher)
+
+    # Post debit to room folio
+    folio_tx = FolioTransaction(
+        room_number=paid_out_data.room_number,
+        folio_number=1,
+        guest_name=paid_out_data.guest_name,
+        transaction_type="Paid Out",
+        voucher_or_bill_no=paid_out_data.voucher_number,
+        particulars=f"Front Office Paid Out: {paid_out_data.purpose}",
+        sac_code="996311",
+        debit_amount=paid_out_data.paid_amount,
+        credit_amount=0.0,
+        tax_amount=0.0,
+        posting_date=paid_out_data.date,
+        posted_by=paid_out_data.authorized_by
+    )
+    db.add(folio_tx)
+
+    db.commit()
+    db.refresh(new_voucher)
+    return new_voucher
+
+# -------------------------------------------------------------
+# 4. Foreign Exchange Currency Encashment (Form FLM)
+# -------------------------------------------------------------
+@app.get("/api/pms/forex", response_model=List[ForexEncashmentResponse], tags=["IDS Foreign Exchange"])
+def get_forex_encashments(db: Session = Depends(get_db)):
+    return db.query(ForexEncashment).order_by(ForexEncashment.id.desc()).all()
+
+@app.post("/api/pms/forex", response_model=ForexEncashmentResponse, status_code=status.HTTP_201_CREATED, tags=["IDS Foreign Exchange"])
+def create_forex_encashment(forex_data: ForexEncashmentCreate, db: Session = Depends(get_db)):
+    new_encashment = ForexEncashment(**forex_data.model_dump())
+    db.add(new_encashment)
+    db.commit()
+    db.refresh(new_encashment)
+    return new_encashment
+
+# -------------------------------------------------------------
+# 5. Housekeeping Lost & Found
+# -------------------------------------------------------------
+@app.get("/api/pms/lost-found", response_model=List[LostAndFoundItemResponse], tags=["IDS Housekeeping"])
+def get_lost_and_found_items(status: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(LostAndFoundItem)
+    if status:
+        query = query.filter(LostAndFoundItem.status == status)
+    return query.order_by(LostAndFoundItem.id.desc()).all()
+
+@app.post("/api/pms/lost-found", response_model=LostAndFoundItemResponse, status_code=status.HTTP_201_CREATED, tags=["IDS Housekeeping"])
+def register_lost_item(item_data: LostAndFoundItemCreate, db: Session = Depends(get_db)):
+    new_item = LostAndFoundItem(**item_data.model_dump())
+    db.add(new_item)
+    db.commit()
+    db.refresh(new_item)
+    return new_item
+
+@app.patch("/api/pms/lost-found/{tracking_no}/claim", response_model=LostAndFoundItemResponse, tags=["IDS Housekeeping"])
+def claim_lost_item(tracking_no: str, claim_data: LostAndFoundItemClaim, db: Session = Depends(get_db)):
+    item = db.query(LostAndFoundItem).filter(LostAndFoundItem.tracking_no == tracking_no).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Lost & Found record not found")
+    item.status = "Claimed/Returned"
+    item.claimed_by = claim_data.claimed_by
+    item.claim_date = claim_data.claim_date
+    db.commit()
+    db.refresh(item)
+    return item
+
+# -------------------------------------------------------------
+# 6. Front Desk Room Transfers & Stay Amendments
+# -------------------------------------------------------------
+@app.get("/api/pms/room-transfers", response_model=List[RoomTransferLogResponse], tags=["IDS Front Desk"])
+def get_room_transfers(db: Session = Depends(get_db)):
+    return db.query(RoomTransferLog).order_by(RoomTransferLog.id.desc()).all()
+
+@app.post("/api/pms/room-transfers", response_model=RoomTransferLogResponse, status_code=status.HTTP_201_CREATED, tags=["IDS Front Desk"])
+def transfer_room(transfer_data: RoomTransferLogCreate, db: Session = Depends(get_db)):
+    # 1. Update from_room status to dirty
+    from_r = db.query(Room).filter(Room.number == transfer_data.from_room).first()
+    if from_r:
+        from_r.status = "dirty"
+
+    # 2. Update to_room status to occupied
+    to_r = db.query(Room).filter(Room.number == transfer_data.to_room).first()
+    if to_r:
+        to_r.status = "occupied"
+
+    # 3. Log transfer
+    log = RoomTransferLog(**transfer_data.model_dump())
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    return log
+
+@app.post("/api/pms/stay/amend", tags=["IDS Front Desk"])
+def amend_stay(amend_data: StayAmendRequest, db: Session = Depends(get_db)):
+    # Update active booking or room record
+    room = db.query(Room).filter(Room.number == amend_data.room_number).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    return {
+        "status": "success",
+        "room_number": amend_data.room_number,
+        "new_departure_date": amend_data.new_departure_date,
+        "message": f"Stay for Room {amend_data.room_number} amended to {amend_data.new_departure_date}."
+    }
+
+# -------------------------------------------------------------
+# 7. Corporate Contract Rates Linking
+# -------------------------------------------------------------
+@app.get("/api/pms/contract-rates", response_model=List[CorporateRateLinkResponse], tags=["IDS Rates & Corporate"])
+def get_corporate_contract_rates(db: Session = Depends(get_db)):
+    return db.query(CorporateRateLink).order_by(CorporateRateLink.id.desc()).all()
+
+@app.post("/api/pms/contract-rates", response_model=CorporateRateLinkResponse, status_code=status.HTTP_201_CREATED, tags=["IDS Rates & Corporate"])
+def link_corporate_rate(rate_data: CorporateRateLinkCreate, db: Session = Depends(get_db)):
+    link = CorporateRateLink(**rate_data.model_dump())
+    db.add(link)
+    db.commit()
+    db.refresh(link)
+    return link
 

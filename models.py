@@ -231,3 +231,115 @@ class LaundryOrder(Base):
     attendant = Column(String(100), default="Sunil Mohapatra")
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
+class FolioTransaction(Base):
+    __tablename__ = "folio_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    room_number = Column(String(20), index=True, nullable=False) # e.g. "102"
+    folio_number = Column(Integer, default=1)
+    guest_name = Column(String(100), nullable=False)
+    transaction_type = Column(String(50), nullable=False) # 'Room Charge', 'POS F&B', 'Laundry', 'Advance Deposit', 'Allowance', 'Paid Out'
+    voucher_or_bill_no = Column(String(50), nullable=True)
+    particulars = Column(String(255), nullable=False)
+    sac_code = Column(String(20), default="996311")
+    debit_amount = Column(Float, default=0.0) # Charged to guest
+    credit_amount = Column(Float, default=0.0) # Paid / allowed by guest
+    tax_amount = Column(Float, default=0.0)
+    posting_date = Column(String(30), nullable=False) # e.g. "11-OCT-2026"
+    posted_by = Column(String(100), default="MANAGER")
+    is_settled = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AdvanceDeposit(Base):
+    __tablename__ = "advance_deposits"
+
+    id = Column(Integer, primary_key=True, index=True)
+    receipt_number = Column(String(50), unique=True, index=True, nullable=False) # e.g. "REC-2026-001"
+    room_number = Column(String(20), index=True, nullable=False)
+    guest_name = Column(String(100), nullable=False)
+    amount = Column(Float, nullable=False)
+    payment_mode = Column(String(30), default="Cash") # 'Cash', 'UPI', 'Credit Card', 'Bank Transfer'
+    reference_no = Column(String(100), nullable=True)
+    remarks = Column(String(255), default="Room Advance Deposit")
+    status = Column(String(30), default="Active") # 'Active', 'Adjusted', 'Deleted', 'Refunded'
+    date = Column(String(30), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PaidOutVoucher(Base):
+    __tablename__ = "paid_out_vouchers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    voucher_number = Column(String(50), unique=True, index=True, nullable=False) # e.g. "POV-2026-001"
+    room_number = Column(String(20), index=True, nullable=False)
+    guest_name = Column(String(100), nullable=False)
+    paid_amount = Column(Float, nullable=False)
+    purpose = Column(String(255), nullable=False) # e.g. "Guest Taxi Fare Advance", "Medicine Refund"
+    authorized_by = Column(String(100), default="Duty Manager")
+    date = Column(String(30), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ForexEncashment(Base):
+    __tablename__ = "forex_encashments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    encashment_no = Column(String(50), unique=True, index=True, nullable=False) # e.g. "ENC/2026/001"
+    room_number = Column(String(20), nullable=False)
+    guest_name = Column(String(100), nullable=False)
+    passport_number = Column(String(50), nullable=False)
+    nationality = Column(String(50), default="USA")
+    currency_code = Column(String(10), nullable=False) # 'USD', 'EUR', 'GBP', 'AED'
+    foreign_amount = Column(Float, nullable=False)
+    exchange_rate = Column(Float, nullable=False)
+    inr_value = Column(Float, nullable=False)
+    gst_amount = Column(Float, default=0.0)
+    net_payable = Column(Float, nullable=False)
+    date = Column(String(30), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class LostAndFoundItem(Base):
+    __tablename__ = "lost_and_found_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tracking_no = Column(String(50), unique=True, index=True, nullable=False) # e.g. "LF-2026-001"
+    item_description = Column(String(255), nullable=False)
+    room_number = Column(String(20), nullable=True)
+    found_location = Column(String(100), default="Room")
+    found_by = Column(String(100), default="Housekeeping Attendant")
+    found_date = Column(String(30), nullable=False)
+    status = Column(String(30), default="Found/Stored") # 'Found/Stored', 'Claimed/Returned', 'Disposed'
+    claimed_by = Column(String(100), nullable=True)
+    claim_date = Column(String(30), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class RoomTransferLog(Base):
+    __tablename__ = "room_transfer_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    guest_name = Column(String(100), nullable=False)
+    from_room = Column(String(20), nullable=False)
+    to_room = Column(String(20), nullable=False)
+    reason = Column(String(255), default="Guest Preference / Maintenance Move")
+    authorized_by = Column(String(100), default="Front Office Duty Manager")
+    transfer_date = Column(String(30), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CorporateRateLink(Base):
+    __tablename__ = "corporate_rate_links"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_code = Column(String(30), index=True, nullable=False) # e.g. "COM0001"
+    company_name = Column(String(150), nullable=False) # e.g. "Ashok Leyland Ltd"
+    rate_table_no = Column(String(30), nullable=False) # "100", "101", "102"
+    description = Column(String(255), nullable=False)
+    valid_from = Column(String(30), nullable=False)
+    valid_to = Column(String(30), nullable=False)
+    status = Column(String(30), default="Active")
+    created_at = Column(DateTime, default=datetime.utcnow)
+

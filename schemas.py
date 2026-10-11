@@ -365,3 +365,160 @@ class LaundryOrderResponse(LaundryOrderCreate):
     class Config:
         from_attributes = True
 
+
+# -------------------------------------------------------------
+# IDS FortuneNext PMS Schemas (67 Modals Backend Support)
+# -------------------------------------------------------------
+
+# 1. Folio Transactions
+class FolioTransactionCreate(BaseModel):
+    room_number: str
+    folio_number: int = 1
+    guest_name: str
+    transaction_type: str # 'Room Charge', 'POS F&B', 'Laundry', 'Advance Deposit', 'Allowance', 'Paid Out'
+    voucher_or_bill_no: Optional[str] = None
+    particulars: str
+    sac_code: str = "996311"
+    debit_amount: float = 0.0
+    credit_amount: float = 0.0
+    tax_amount: float = 0.0
+    posting_date: str
+    posted_by: str = "MANAGER"
+
+class FolioTransactionResponse(FolioTransactionCreate):
+    id: int
+    is_settled: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class FolioSummaryResponse(BaseModel):
+    room_number: str
+    folio_number: int
+    guest_name: str
+    total_debit: float
+    total_credit: float
+    net_balance: float
+    transactions: List[FolioTransactionResponse]
+
+# 2. Advance Deposits
+class AdvanceDepositCreate(BaseModel):
+    receipt_number: str
+    room_number: str
+    guest_name: str
+    amount: float
+    payment_mode: str = "Cash"
+    reference_no: Optional[str] = None
+    remarks: str = "Room Advance Deposit"
+    status: str = "Active"
+    date: str
+
+class AdvanceDepositResponse(AdvanceDepositCreate):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# 3. Paid-Out Cash Vouchers
+class PaidOutVoucherCreate(BaseModel):
+    voucher_number: str
+    room_number: str
+    guest_name: str
+    paid_amount: float
+    purpose: str
+    authorized_by: str = "Duty Manager"
+    date: str
+
+class PaidOutVoucherResponse(PaidOutVoucherCreate):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# 4. Foreign Exchange Encashment
+class ForexEncashmentCreate(BaseModel):
+    encashment_no: str
+    room_number: str
+    guest_name: str
+    passport_number: str
+    nationality: str = "USA"
+    currency_code: str
+    foreign_amount: float
+    exchange_rate: float
+    inr_value: float
+    gst_amount: float = 0.0
+    net_payable: float
+    date: str
+
+class ForexEncashmentResponse(ForexEncashmentCreate):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# 5. Lost & Found Items
+class LostAndFoundItemCreate(BaseModel):
+    tracking_no: str
+    item_description: str
+    room_number: Optional[str] = None
+    found_location: str = "Room"
+    found_by: str = "Housekeeping Attendant"
+    found_date: str
+    status: str = "Found/Stored"
+
+class LostAndFoundItemClaim(BaseModel):
+    claimed_by: str
+    claim_date: str
+
+class LostAndFoundItemResponse(LostAndFoundItemCreate):
+    id: int
+    claimed_by: Optional[str] = None
+    claim_date: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# 6. Room Transfer Logs & Stay Amendments
+class RoomTransferLogCreate(BaseModel):
+    guest_name: str
+    from_room: str
+    to_room: str
+    reason: str = "Guest Preference / Maintenance Move"
+    authorized_by: str = "Front Office Duty Manager"
+    transfer_date: str
+
+class RoomTransferLogResponse(RoomTransferLogCreate):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class StayAmendRequest(BaseModel):
+    room_number: str
+    new_departure_date: str
+    reason: str = "Extended Stay on Guest Request"
+    revised_rate: Optional[float] = None
+
+# 7. Corporate Contract Rates
+class CorporateRateLinkCreate(BaseModel):
+    company_code: str
+    company_name: str
+    rate_table_no: str
+    description: str
+    valid_from: str
+    valid_to: str
+    status: str = "Active"
+
+class CorporateRateLinkResponse(CorporateRateLinkCreate):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+

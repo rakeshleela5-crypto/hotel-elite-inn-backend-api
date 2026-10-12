@@ -197,53 +197,66 @@ class SetHotelIpRequest(BaseModel):
 
 def auto_migrate_schema():
     try:
-        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-            stmts = [
-                # Bookings (Missing columns added in later models)
-                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS grc_number VARCHAR(50);",
-                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS num_pax INTEGER DEFAULT 1;",
-                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS second_pax_name VARCHAR(100);",
-                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS second_pax_phone VARCHAR(30);",
-                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS second_pax_id VARCHAR(100);",
-                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS plan_code VARCHAR(20) DEFAULT 'EP';",
-                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS billing_mode VARCHAR(50) DEFAULT 'Cash';",
-                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS vehicle_no VARCHAR(50);",
-                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS purpose_of_visit VARCHAR(100) DEFAULT 'Business Visit';",
-                
-                # Restaurant Tables
-                "ALTER TABLE restaurant_tables ADD COLUMN IF NOT EXISTS outlet VARCHAR(50) DEFAULT 'RESTAURANT';",
-                "ALTER TABLE restaurant_tables ADD COLUMN IF NOT EXISTS outlet_code VARCHAR(20) DEFAULT 'RES';",
-                "ALTER TABLE restaurant_tables ADD COLUMN IF NOT EXISTS location_view VARCHAR(100) DEFAULT 'AC MAIN HALL';",
-                
-                # POS Orders
-                "ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS steward_name VARCHAR(100) DEFAULT 'Santosh Biswal';",
-                "ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS cooking_note TEXT;",
-                "ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS is_jain_satvik BOOLEAN DEFAULT FALSE;",
-                
-                # Corporate Accounts
-                "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS company_code VARCHAR(30);",
-                "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS pan_number VARCHAR(30);",
-                "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS address TEXT;",
-                "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS city VARCHAR(100) DEFAULT 'Rayagada';",
-                "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS state VARCHAR(100) DEFAULT 'Odisha';",
-                "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS pin_code VARCHAR(20) DEFAULT '765017';",
-                "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS linked_rate_table VARCHAR(30) DEFAULT '100';",
-                "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS billing_type VARCHAR(30) DEFAULT 'BTC';",
-                
-                # Menu Items
-                "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS uom VARCHAR(20) DEFAULT 'POR';",
-                "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS tax_rate FLOAT DEFAULT 5.0;",
-                "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS sac_hsn_code VARCHAR(20) DEFAULT '996331';",
-                "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS discount_allowed BOOLEAN DEFAULT TRUE;",
-                "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS portions_json TEXT DEFAULT '[]';"
+        from sqlalchemy import inspect
+        insp = inspect(engine)
+        
+        column_defs = {
+            "bookings": [
+                ("grc_number", "VARCHAR(50)"),
+                ("num_pax", "INTEGER DEFAULT 1"),
+                ("second_pax_name", "VARCHAR(100)"),
+                ("second_pax_phone", "VARCHAR(30)"),
+                ("second_pax_id", "VARCHAR(100)"),
+                ("plan_code", "VARCHAR(20) DEFAULT 'EP'"),
+                ("billing_mode", "VARCHAR(50) DEFAULT 'Cash'"),
+                ("vehicle_no", "VARCHAR(50)"),
+                ("purpose_of_visit", "VARCHAR(100) DEFAULT 'Business Visit'")
+            ],
+            "restaurant_tables": [
+                ("outlet", "VARCHAR(50) DEFAULT 'RESTAURANT'"),
+                ("outlet_code", "VARCHAR(20) DEFAULT 'RES'"),
+                ("location_view", "VARCHAR(100) DEFAULT 'AC MAIN HALL'")
+            ],
+            "pos_orders": [
+                ("steward_name", "VARCHAR(100) DEFAULT 'Santosh Biswal'"),
+                ("cooking_note", "TEXT"),
+                ("is_jain_satvik", "BOOLEAN DEFAULT FALSE")
+            ],
+            "corporate_accounts": [
+                ("company_code", "VARCHAR(30)"),
+                ("pan_number", "VARCHAR(30)"),
+                ("address", "TEXT"),
+                ("city", "VARCHAR(100) DEFAULT 'Rayagada'"),
+                ("state", "VARCHAR(100) DEFAULT 'Odisha'"),
+                ("pin_code", "VARCHAR(20) DEFAULT '765017'"),
+                ("linked_rate_table", "VARCHAR(30) DEFAULT '100'"),
+                ("billing_type", "VARCHAR(30) DEFAULT 'BTC'")
+            ],
+            "menu_items": [
+                ("uom", "VARCHAR(20) DEFAULT 'POR'"),
+                ("tax_rate", "FLOAT DEFAULT 5.0"),
+                ("sac_hsn_code", "VARCHAR(20) DEFAULT '996331'"),
+                ("discount_allowed", "BOOLEAN DEFAULT TRUE"),
+                ("portions_json", "TEXT DEFAULT '[]'")
             ]
-            for s in stmts:
+        }
+        
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            for table_name, cols in column_defs.items():
                 try:
-                    conn.execute(text(s))
-                except Exception as ex:
-                    print(f"Auto-migration notice: {ex}")
+                    existing_cols = {c["name"] for c in insp.get_columns(table_name)}
+                except Exception:
+                    existing_cols = set()
+                
+                for col_name, col_type in cols:
+                    if col_name not in existing_cols:
+                        try:
+                            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
+                            print(f"✓ Added column {col_name} to {table_name}")
+                        except Exception as ex:
+                            print(f"Notice adding {col_name} to {table_name}: {ex}")
     except Exception as e:
-        print(f"Auto-migration connection notice: {e}")
+        print(f"Auto-migration inspection error: {e}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

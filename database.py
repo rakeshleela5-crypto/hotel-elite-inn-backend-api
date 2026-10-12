@@ -5,8 +5,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Railway provides DATABASE_URL in postgres:// format; SQLAlchemy 2.0 expects postgresql://
-raw_db_url = os.getenv("DATABASE_URL", "").strip()
+# Railway provides DATABASE_URL / POSTGRES_URL in postgres:// format; SQLAlchemy 2.0 expects postgresql://
+raw_db_url = (
+    os.getenv("DATABASE_URL") or 
+    os.getenv("POSTGRES_URL") or 
+    os.getenv("DATABASE_PUBLIC_URL") or 
+    os.getenv("DATABASE_PRIVATE_URL") or 
+    os.getenv("PGURL") or 
+    ""
+).strip()
 
 if not raw_db_url:
     # Graceful local fallback to SQLite if no remote database is configured

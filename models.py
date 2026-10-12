@@ -455,3 +455,315 @@ class VendorPayable(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+# =============================================================
+# Category 1: Front Office PMS & Guest Management Models
+# =============================================================
+class PoliceManifest(Base):
+    __tablename__ = "police_manifests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    room_no = Column(String(20), index=True, nullable=False)
+    name = Column(String(150), nullable=False)
+    mobile = Column(String(30), nullable=False)
+    age = Column(Integer, default=30)
+    gender = Column(String(20), default="Male")
+    id_proof_type = Column(String(50), default="Aadhaar Card")
+    id_proof_no = Column(String(100), nullable=False)
+    address = Column(Text, nullable=False)
+    arrived_from = Column(String(100), default="Rayagada")
+    destination = Column(String(100), default="Muniguda")
+    purpose = Column(String(255), default="Business Visit")
+    vehicle_no = Column(String(50), nullable=True)
+    check_in_time = Column(String(50), nullable=False)
+    expected_check_out = Column(String(50), nullable=True)
+    status = Column(String(30), default="In-House") # 'In-House', 'Checked Out'
+    guest_type = Column(String(50), default="Corporate")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ForeignerFormC(Base):
+    __tablename__ = "foreigner_form_c"
+
+    id = Column(Integer, primary_key=True, index=True)
+    form_c_no = Column(String(50), unique=True, index=True, nullable=False)
+    room_no = Column(String(20), nullable=False)
+    guest_name = Column(String(150), nullable=False)
+    passport_no = Column(String(50), nullable=False)
+    visa_no = Column(String(50), nullable=False)
+    nationality = Column(String(50), default="Foreign")
+    arrival_date = Column(String(30), nullable=False)
+    departure_date = Column(String(30), nullable=True)
+    purpose_of_visit = Column(String(255), default="Technical Consultant")
+    indian_ref_contact = Column(String(150), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class GuestKycDocument(Base):
+    __tablename__ = "guest_kyc_documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    room_number = Column(String(20), index=True, nullable=False)
+    guest_name = Column(String(150), nullable=False)
+    doc_type = Column(String(50), default="Aadhaar Card")
+    doc_number_masked = Column(String(50), nullable=False)
+    id_file_url = Column(String(255), nullable=True)
+    verified_by = Column(String(100), default="FRONT DESK")
+    verified_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CashierShiftRecord(Base):
+    __tablename__ = "cashier_shift_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    shift_id = Column(String(30), index=True, nullable=False) # 'shift1', 'shift2', 'shift3'
+    shift_name = Column(String(100), nullable=False) # 'Shift 1 — Morning', 'Shift 2 — Evening', 'Shift 3 — Night'
+    cashier_name = Column(String(100), nullable=False) # 'Ranjan Kumar Dash (FO-01)'
+    cashier_code = Column(String(30), nullable=False) # 'FO-01', 'FO-02', 'FO-03'
+    accounting_date = Column(String(30), index=True, nullable=False) # e.g. "02-10-2026"
+    status = Column(String(30), default="OPEN") # 'OPEN', 'CLOSED'
+    drawer_float = Column(Float, default=2000.0) # Opening drawer float
+    safe_drop = Column(Float, default=0.0)
+    denominations_json = Column(Text, default="{}") # {n500: 4, n200: 0, n100: 0, coins: 0}
+    physical_cash = Column(Float, default=2000.0)
+    collections_json = Column(Text, default="{}") # {cash: 0, upi: 0, card: 0, btc: 0, total: 0}
+    fnb_split_json = Column(Text, default="{}") # {roomService: 0, restaurant: 0, takeAway: 0}
+    handover_notes = Column(Text, default="")
+    closed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# =============================================================
+# Category 2: Folio Accounting & Adjustments Models
+# =============================================================
+class FolioChargeTransfer(Base):
+    __tablename__ = "folio_charge_transfers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    from_room = Column(String(20), nullable=False)
+    to_room = Column(String(20), nullable=False)
+    from_folio = Column(Integer, default=1)
+    to_folio = Column(Integer, default=1)
+    amount = Column(Float, nullable=False)
+    charge_type = Column(String(50), default="Room Charge")
+    reason = Column(String(255), default="Guest Request / Combined Billing")
+    authorized_by = Column(String(100), default="Duty Manager")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class BillAllowance(Base):
+    __tablename__ = "bill_allowances"
+
+    id = Column(Integer, primary_key=True, index=True)
+    room_number = Column(String(20), nullable=False)
+    folio_number = Column(Integer, default=1)
+    bill_no = Column(String(50), nullable=True)
+    allowance_amount = Column(Float, nullable=False)
+    tax_reversed = Column(Float, default=0.0)
+    reason = Column(String(255), nullable=False) # 'Service Deficiency Rebate', 'Manager Courtesy Discount'
+    approved_by = Column(String(100), default="GENERAL MANAGER")
+    date = Column(String(30), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CorporateSplitBilling(Base):
+    __tablename__ = "corporate_split_billings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    room_number = Column(String(20), nullable=False)
+    corporate_id = Column(Integer, nullable=True)
+    company_name = Column(String(150), nullable=False)
+    btc_amount = Column(Float, default=0.0) # Room rent + GST to company
+    personal_amount = Column(Float, default=0.0) # Food + personal laundry to guest
+    billing_date = Column(String(30), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class RoomBlock(Base):
+    __tablename__ = "room_blocks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    room_number = Column(String(20), index=True, nullable=False)
+    block_type = Column(String(50), default="Maintenance") # 'Out of Order', 'Out of Service', 'VIP Hold', 'Painting/AC Work'
+    reason = Column(String(255), nullable=False)
+    start_date = Column(String(30), nullable=False)
+    end_date = Column(String(30), nullable=False)
+    blocked_by = Column(String(100), default="MAINTENANCE ENGINEER")
+    status = Column(String(30), default="ACTIVE") # 'ACTIVE', 'RELEASED'
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# =============================================================
+# Category 3: POS, F&B & Banquet Models
+# =============================================================
+class BanquetEvent(Base):
+    __tablename__ = "banquet_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(String(50), unique=True, index=True, nullable=False) # e.g. "BNQ-2026-001"
+    event_name = Column(String(150), nullable=False) # e.g. "JK Paper Annual Dealers Conference"
+    host_name = Column(String(150), nullable=False)
+    host_phone = Column(String(30), nullable=False)
+    event_date = Column(String(30), index=True, nullable=False)
+    slot = Column(String(50), default="Full Day") # 'Morning (09:00-14:00)', 'Evening (18:00-23:00)', 'Full Day'
+    pax = Column(Integer, default=50)
+    hall_name = Column(String(100), default="Grand Ballroom / Conference Hall")
+    hall_rental = Column(Float, default=15000.0)
+    food_package_rate = Column(Float, default=650.0) # Per pax
+    menu_summary = Column(Text, default="Buffet Lunch + Hi-Tea + Dinner")
+    subtotal = Column(Float, default=0.0)
+    gst_amount = Column(Float, default=0.0) # 18% GST (SAC 997212)
+    total_amount = Column(Float, default=0.0)
+    advance_paid = Column(Float, default=0.0)
+    balance_due = Column(Float, default=0.0)
+    status = Column(String(30), default="Confirmed") # 'Enquiry', 'Confirmed', 'Running', 'Settled', 'Cancelled'
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PosServer(Base):
+    __tablename__ = "pos_servers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    server_code = Column(String(20), unique=True, index=True, nullable=False) # 'S-01', 'C-01'
+    name = Column(String(100), nullable=False)
+    role = Column(String(50), default="Steward") # 'Captain', 'Steward', 'Trainee'
+    section = Column(String(50), default="Restaurant") # 'Restaurant', 'Room Service', 'Banquet'
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# =============================================================
+# Category 4: Store, Materials & Inventory Models
+# =============================================================
+class PurchaseOrder(Base):
+    __tablename__ = "purchase_orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    po_number = Column(String(50), unique=True, index=True, nullable=False) # 'PO-2026-001'
+    vendor_name = Column(String(150), index=True, nullable=False)
+    order_date = Column(String(30), nullable=False)
+    expected_delivery = Column(String(30), nullable=True)
+    status = Column(String(30), default="Draft") # 'Draft', 'Approved', 'Partially Received', 'Completed', 'Cancelled'
+    total_amount = Column(Float, default=0.0)
+    items_detail_json = Column(Text, default="[]") # [{item_code, item_name, quantity, unit, rate, amount}]
+    approved_by = Column(String(100), default="STORE MANAGER")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class GoodsReceiptNote(Base):
+    __tablename__ = "goods_receipt_notes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    grn_number = Column(String(50), unique=True, index=True, nullable=False) # 'GRN-2026-001'
+    po_number = Column(String(50), nullable=True)
+    vendor_name = Column(String(150), nullable=False)
+    challan_no = Column(String(50), nullable=True)
+    invoice_no = Column(String(50), nullable=True)
+    received_date = Column(String(30), nullable=False)
+    total_val = Column(Float, default=0.0)
+    verified_by = Column(String(100), default="STORE INCHARGE")
+    items_received_json = Column(Text, default="[]")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class StoreIssueVoucher(Base):
+    __tablename__ = "store_issue_vouchers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    voucher_no = Column(String(50), unique=True, index=True, nullable=False) # 'SIV-2026-001'
+    department = Column(String(50), nullable=False) # 'Kitchen', 'Housekeeping', 'Front Desk', 'Maintenance'
+    target_outlet = Column(String(50), default="Main Kitchen")
+    item_name = Column(String(100), nullable=False)
+    quantity = Column(Float, default=0.0)
+    unit = Column(String(20), default="KG")
+    cost = Column(Float, default=0.0)
+    issued_by = Column(String(100), default="STORE KEEPER")
+    received_by = Column(String(100), default="HEAD CHEF")
+    issue_date = Column(String(30), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# =============================================================
+# Category 5: Housekeeping, Linen & Asset Models
+# =============================================================
+class LinenInventory(Base):
+    __tablename__ = "linen_inventory"
+
+    id = Column(Integer, primary_key=True, index=True)
+    item_name = Column(String(100), unique=True, nullable=False) # 'King Bedsheet White', 'Bath Towel 650 GSM', etc.
+    category = Column(String(50), default="Bed Linen") # 'Bed Linen', 'Bath Linen', 'F&B Linen'
+    total_stock = Column(Integer, default=100)
+    in_use = Column(Integer, default=54)
+    in_laundry = Column(Integer, default=20)
+    discard_count = Column(Integer, default=0)
+    unit_cost = Column(Float, default=450.0)
+    par_stock = Column(Integer, default=120)
+    last_audited = Column(String(30), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class RoomAmenityTracker(Base):
+    __tablename__ = "room_amenity_tracker"
+
+    id = Column(Integer, primary_key=True, index=True)
+    item_name = Column(String(100), unique=True, nullable=False) # 'Dental Kit', 'Herbal Soap 30g', 'Shampoo 30ml', 'Mineral Water 1L'
+    par_stock = Column(Integer, default=200)
+    current_stock = Column(Integer, default=150)
+    unit = Column(String(20), default="Pcs")
+    daily_consumption = Column(Integer, default=30)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+
+
+class HousekeepingInspection(Base):
+    __tablename__ = "housekeeping_inspections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    room_number = Column(String(20), index=True, nullable=False)
+    inspector = Column(String(100), default="HK Executive")
+    inspection_date = Column(String(30), nullable=False)
+    score = Column(Float, default=100.0) # 0 - 100%
+    remarks = Column(Text, default="Bed properly tucked, washroom sanitized, mini amenities restocked")
+    checklist_json = Column(Text, default="{}")
+    status = Column(String(30), default="Passed") # 'Passed', 'Needs Touchup', 'Failed'
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# =============================================================
+# Category 7: Corporate BTC, Aging, TDS & Bank Recon Models
+# =============================================================
+class BankReconciliation(Base):
+    __tablename__ = "bank_reconciliations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    statement_date = Column(String(30), index=True, nullable=False)
+    bank_name = Column(String(100), default="State Bank of India (SBI) - Muniguda Branch")
+    account_number = Column(String(50), default="38910294812")
+    statement_balance = Column(Float, default=0.0)
+    book_balance = Column(Float, default=0.0)
+    uncredited_cheques = Column(Float, default=0.0)
+    unpresented_cheques = Column(Float, default=0.0)
+    reconciled_balance = Column(Float, default=0.0)
+    difference = Column(Float, default=0.0)
+    status = Column(String(30), default="Reconciled") # 'Reconciled', 'Variance Pending'
+    reconciled_by = Column(String(100), default="CHIEF ACCOUNTANT")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class TdsTcsRecord(Base):
+    __tablename__ = "tds_tcs_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    invoice_no = Column(String(50), index=True, nullable=False)
+    corporate_name = Column(String(150), index=True, nullable=False)
+    gstin = Column(String(50), nullable=True)
+    tan_no = Column(String(50), nullable=True)
+    section = Column(String(20), default="194C") # '194C' (1%/2% Contractor), '194J' (10% Prof/Tech)
+    gross_amount = Column(Float, default=0.0)
+    tds_rate = Column(Float, default=2.0)
+    tds_amount = Column(Float, default=0.0)
+    net_receivable = Column(Float, default=0.0)
+    financial_year = Column(String(20), default="2026-27")
+    quarter = Column(String(10), default="Q3")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+

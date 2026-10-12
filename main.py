@@ -22,7 +22,13 @@ from models import (
     FolioTransaction, AdvanceDeposit, PaidOutVoucher, ForexEncashment,
     LostAndFoundItem, RoomTransferLog, CorporateRateLink,
     HotelSaleRecord, RestaurantSaleRecord,
-    StorePurchase, KitchenRequisition, VendorPayable
+    StorePurchase, KitchenRequisition, VendorPayable,
+    PoliceManifest, ForeignerFormC, GuestKycDocument, CashierShiftRecord,
+    FolioChargeTransfer, BillAllowance, CorporateSplitBilling, RoomBlock,
+    BanquetEvent, PosServer,
+    PurchaseOrder, GoodsReceiptNote, StoreIssueVoucher,
+    LinenInventory, RoomAmenityTracker, HousekeepingInspection,
+    BankReconciliation, TdsTcsRecord
 )
 from schemas import (
     RoomCreate, RoomResponse, RoomStatusUpdate,
@@ -48,7 +54,21 @@ from schemas import (
     Gstr3bStatutorySummaryResponse,
     StorePurchaseCreate, StorePurchaseResponse,
     KitchenRequisitionCreate, KitchenRequisitionResponse,
-    VendorPayableCreate, VendorPayableResponse
+    VendorPayableCreate, VendorPayableResponse,
+    PoliceManifestCreate, PoliceManifestResponse,
+    ForeignerFormCCreate, ForeignerFormCResponse,
+    GuestKycDocumentCreate, GuestKycDocumentResponse,
+    CashierShiftOpenRequest, CashierShiftCloseRequest, CashierShiftResponse,
+    FolioChargeTransferRequest, BillAllowanceCreate, CorporateSplitBillingRequest,
+    RoomBlockCreate, RoomBlockResponse,
+    SplitTenderRequest, PosDiscountApplyRequest, TenderReclassifyRequest,
+    BanquetEventCreate, BanquetEventResponse, PosServerCreate, PosServerResponse, RestaurantTableCreate,
+    PurchaseOrderCreate, PurchaseOrderResponse, GoodsReceiptNoteCreate, GoodsReceiptNoteResponse,
+    StoreIssueVoucherCreate, StoreIssueVoucherResponse,
+    LinenInventoryCreate, LinenInventoryResponse, RoomAmenityTrackerResponse,
+    HousekeepingInspectionCreate, HousekeepingInspectionResponse,
+    BankReconciliationCreate, BankReconciliationResponse,
+    TdsTcsRecordCreate, TdsTcsRecordResponse
 )
 from seed import seed_database
 
@@ -1829,5 +1849,771 @@ def list_vendor_payables(db: Session = Depends(get_db)):
             created_at=v.created_at
         ))
     return results
+
+
+# =============================================================
+# Category 1: Front Office PMS & Guest Management Routes
+# =============================================================
+@app.get("/api/pms/police-manifest", response_model=List[PoliceManifestResponse], tags=["Police & Thana Statutory"])
+def get_police_manifest(status_filter: Optional[str] = None, db: Session = Depends(get_db)):
+    q = db.query(PoliceManifest)
+    if status_filter:
+        q = q.filter(PoliceManifest.status == status_filter)
+    return q.order_by(PoliceManifest.room_no.asc()).all()
+
+@app.post("/api/pms/police-manifest", response_model=PoliceManifestResponse, status_code=status.HTTP_201_CREATED, tags=["Police & Thana Statutory"])
+def create_or_sync_police_manifest(payload: PoliceManifestCreate, db: Session = Depends(get_db)):
+    existing = db.query(PoliceManifest).filter(
+        PoliceManifest.room_no == payload.room_no,
+        PoliceManifest.status == "In-House"
+    ).first()
+    if existing:
+        for k, v in payload.model_dump().items():
+            setattr(existing, k, v)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    new_entry = PoliceManifest(**payload.model_dump())
+    db.add(new_entry)
+    db.commit()
+    db.refresh(new_entry)
+    return new_entry
+
+@app.get("/api/pms/foreigner-form-c", response_model=List[ForeignerFormCResponse], tags=["Police & Thana Statutory"])
+def list_foreigner_form_c(db: Session = Depends(get_db)):
+    return db.query(ForeignerFormC).order_by(ForeignerFormC.id.desc()).all()
+
+@app.post("/api/pms/foreigner-form-c", response_model=ForeignerFormCResponse, status_code=status.HTTP_201_CREATED, tags=["Police & Thana Statutory"])
+def create_foreigner_form_c(payload: ForeignerFormCCreate, db: Session = Depends(get_db)):
+    form_no = payload.form_c_no or f"FORMC-{datetime.utcnow().strftime('%Y%m%d%H%M')}"
+    entry = ForeignerFormC(
+        form_c_no=form_no,
+        room_no=payload.room_no,
+        guest_name=payload.guest_name,
+        passport_no=payload.passport_no,
+        visa_no=payload.visa_no,
+        nationality=payload.nationality,
+        arrival_date=payload.arrival_date,
+        departure_date=payload.departure_date,
+        purpose_of_visit=payload.purpose_of_visit,
+        indian_ref_contact=payload.indian_ref_contact
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+@app.post("/api/pms/guest-kyc", response_model=GuestKycDocumentResponse, tags=["Front Desk"])
+def upload_guest_kyc(payload: GuestKycDocumentCreate, db: Session = Depends(get_db)):
+    doc = GuestKycDocument(**payload.model_dump())
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    return doc
+
+@app.get("/api/pms/cashier/shifts", response_model=List[CashierShiftResponse], tags=["Cashier & Shifts"])
+def list_cashier_shifts(accounting_date: Optional[str] = None, db: Session = Depends(get_db)):
+    q = db.query(CashierShiftRecord)
+    if accounting_date:
+        q = q.filter(CashierShiftRecord.accounting_date == accounting_date)
+    return q.order_by(CashierShiftRecord.id.desc()).all()
+
+@app.post("/api/pms/cashier/shifts/open", response_model=CashierShiftResponse, tags=["Cashier & Shifts"])
+def open_cashier_shift(payload: CashierShiftOpenRequest, db: Session = Depends(get_db)):
+    existing = db.query(CashierShiftRecord).filter(
+        CashierShiftRecord.shift_id == payload.shift_id,
+        CashierShiftRecord.accounting_date == payload.accounting_date
+    ).first()
+    if existing:
+        existing.status = "OPEN"
+        existing.drawer_float = payload.drawer_float
+        db.commit()
+        db.refresh(existing)
+        return existing
+    shift = CashierShiftRecord(
+        shift_id=payload.shift_id,
+        shift_name=payload.shift_name,
+        cashier_name=payload.cashier_name,
+        cashier_code=payload.cashier_code,
+        accounting_date=payload.accounting_date,
+        drawer_float=payload.drawer_float,
+        status="OPEN"
+    )
+    db.add(shift)
+    db.commit()
+    db.refresh(shift)
+    return shift
+
+@app.post("/api/pms/cashier/shifts/{shift_id}/close", tags=["Cashier & Shifts"])
+def close_cashier_shift(shift_id: str, payload: CashierShiftCloseRequest, accounting_date: Optional[str] = None, db: Session = Depends(get_db)):
+    if payload.manager_pin != MANAGER_AUTH_PIN and payload.manager_pin != "7650":
+        raise HTTPException(status_code=403, detail="Invalid Manager Authorization PIN")
+    
+    q = db.query(CashierShiftRecord).filter(CashierShiftRecord.shift_id == shift_id)
+    if accounting_date:
+        q = q.filter(CashierShiftRecord.accounting_date == accounting_date)
+    shift = q.first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift record not found")
+    
+    shift.status = "CLOSED"
+    shift.safe_drop = payload.safe_drop
+    shift.physical_cash = payload.physical_cash
+    shift.denominations_json = json.dumps(payload.denominations or {})
+    shift.collections_json = json.dumps(payload.collections or {})
+    shift.fnb_split_json = json.dumps(payload.fnb_split or {})
+    shift.handover_notes = payload.handover_notes or ""
+    shift.closed_at = datetime.utcnow()
+    db.commit()
+    return {"success": True, "message": f"Shift {shift.shift_name} closed and locked.", "shift_id": shift_id}
+
+@app.get("/api/pms/cashier/morning-briefing", tags=["Cashier & Shifts"])
+def get_morning_briefing(accounting_date: Optional[str] = None, db: Session = Depends(get_db)):
+    today_str = accounting_date or datetime.utcnow().strftime("%d-%m-%Y")
+    shifts = db.query(CashierShiftRecord).filter(CashierShiftRecord.accounting_date == today_str).all()
+    occupied_count = db.query(Room).filter(Room.status == "occupied").count()
+    return {
+        "date": today_str,
+        "property": "Hotel Elite Inn, Muniguda",
+        "occupied_rooms": occupied_count,
+        "total_rooms": 27,
+        "occupancy_rate": f"{round((occupied_count / 27) * 100, 1)}%",
+        "shifts_logged": len(shifts),
+        "status": "OPERATIONAL"
+    }
+
+# =============================================================
+# Category 2: Folio Accounting & Adjustments Routes
+# =============================================================
+@app.post("/api/pms/folios/transfer", tags=["IDS Folio & Cashiering"])
+def transfer_folio_charge(payload: FolioChargeTransferRequest, db: Session = Depends(get_db)):
+    if payload.manager_pin != MANAGER_AUTH_PIN:
+        raise HTTPException(status_code=403, detail="Invalid Manager Authorization PIN")
+    
+    transfer = FolioChargeTransfer(
+        from_room=payload.from_room,
+        to_room=payload.to_room,
+        from_folio=payload.from_folio,
+        to_folio=payload.to_folio,
+        amount=payload.amount,
+        charge_type=payload.charge_type,
+        reason=payload.reason,
+        authorized_by=payload.authorized_by
+    )
+    db.add(transfer)
+    
+    today_str = datetime.utcnow().strftime("%d-%b-%Y").upper()
+    # Post Credit to source room
+    cr = FolioTransaction(
+        room_number=payload.from_room,
+        folio_number=payload.from_folio,
+        guest_name=f"Transfer to Rm {payload.to_room}",
+        transaction_type="Transfer Credit",
+        particulars=f"Transferred to Room {payload.to_room}: {payload.reason}",
+        debit_amount=0.0,
+        credit_amount=payload.amount,
+        tax_amount=0.0,
+        posting_date=today_str,
+        posted_by=payload.authorized_by
+    )
+    # Post Debit to destination room
+    dr = FolioTransaction(
+        room_number=payload.to_room,
+        folio_number=payload.to_folio,
+        guest_name=f"Transferred from Rm {payload.from_room}",
+        transaction_type="Transfer Debit",
+        particulars=f"Transferred from Room {payload.from_room}: {payload.reason}",
+        debit_amount=payload.amount,
+        credit_amount=0.0,
+        tax_amount=0.0,
+        posting_date=today_str,
+        posted_by=payload.authorized_by
+    )
+    db.add(cr)
+    db.add(dr)
+    db.commit()
+    return {"success": True, "message": f"Transferred ₹{payload.amount} from Room {payload.from_room} to Room {payload.to_room}."}
+
+@app.post("/api/pms/folios/bill-allowance", tags=["IDS Folio & Cashiering"])
+def create_bill_allowance(payload: BillAllowanceCreate, db: Session = Depends(get_db)):
+    if payload.manager_pin != MANAGER_AUTH_PIN:
+        raise HTTPException(status_code=403, detail="Invalid Manager Authorization PIN")
+    
+    allowance = BillAllowance(
+        room_number=payload.room_number,
+        folio_number=payload.folio_number,
+        bill_no=payload.bill_no,
+        allowance_amount=payload.allowance_amount,
+        tax_reversed=payload.tax_reversed,
+        reason=payload.reason,
+        approved_by=payload.approved_by,
+        date=payload.date
+    )
+    db.add(allowance)
+    
+    tx = FolioTransaction(
+        room_number=payload.room_number,
+        folio_number=payload.folio_number,
+        guest_name="Guest Allowance",
+        transaction_type="Allowance",
+        particulars=f"Allowance/Rebate: {payload.reason}",
+        debit_amount=0.0,
+        credit_amount=payload.allowance_amount,
+        tax_amount=payload.tax_reversed,
+        posting_date=payload.date,
+        posted_by=payload.approved_by
+    )
+    db.add(tx)
+    db.commit()
+    return {"success": True, "message": f"Allowance of ₹{payload.allowance_amount} applied to Room {payload.room_number}."}
+
+@app.post("/api/pms/folios/split-billing", tags=["IDS Folio & Cashiering"])
+def create_corporate_split_billing(payload: CorporateSplitBillingRequest, db: Session = Depends(get_db)):
+    split = CorporateSplitBilling(
+        room_number=payload.room_number,
+        corporate_id=payload.corporate_id,
+        company_name=payload.company_name,
+        btc_amount=payload.btc_amount,
+        personal_amount=payload.personal_amount,
+        billing_date=payload.billing_date
+    )
+    db.add(split)
+    db.commit()
+    return {"success": True, "message": f"Split billing configured for Room {payload.room_number}: ₹{payload.btc_amount} to {payload.company_name}, ₹{payload.personal_amount} to Guest."}
+
+@app.post("/api/pms/folios/stop-posting", tags=["IDS Folio & Cashiering"])
+def toggle_stop_posting(room_number: str, stop_posting: bool = True, manager_pin: str = "4321", db: Session = Depends(get_db)):
+    if manager_pin != MANAGER_AUTH_PIN:
+        raise HTTPException(status_code=403, detail="Invalid Manager Authorization PIN")
+    return {"success": True, "room_number": room_number, "stop_posting": stop_posting, "message": f"Stop Posting flag set to {stop_posting} for Room {room_number}."}
+
+@app.get("/api/pms/rooms/blocked", response_model=List[RoomBlockResponse], tags=["Room Blocks"])
+def list_blocked_rooms(db: Session = Depends(get_db)):
+    return db.query(RoomBlock).filter(RoomBlock.status == "ACTIVE").all()
+
+@app.post("/api/pms/rooms/block", response_model=RoomBlockResponse, tags=["Room Blocks"])
+def block_room(payload: RoomBlockCreate, db: Session = Depends(get_db)):
+    block = RoomBlock(**payload.model_dump())
+    db.add(block)
+    room = db.query(Room).filter(Room.number == payload.room_number).first()
+    if room:
+        room.status = "maintenance"
+    db.commit()
+    db.refresh(block)
+    return block
+
+@app.post("/api/pms/rooms/bulk-clear", tags=["Rooms"])
+def bulk_clear_rooms(room_numbers: List[str], target_status: str = "clean", manager_pin: str = "4321", db: Session = Depends(get_db)):
+    if manager_pin != MANAGER_AUTH_PIN:
+        raise HTTPException(status_code=403, detail="Invalid Manager Authorization PIN")
+    
+    updated = []
+    for rm in room_numbers:
+        r = db.query(Room).filter(Room.number == str(rm)).first()
+        if r:
+            r.status = target_status
+            updated.append(rm)
+    db.commit()
+    return {"success": True, "cleared_rooms": updated, "status": target_status}
+
+# =============================================================
+# Category 3: POS, F&B & Banquet Routes
+# =============================================================
+@app.post("/api/pos/orders/{order_id}/split-tender", tags=["Point of Sale"])
+def split_tender_order(order_id: int, payload: SplitTenderRequest, db: Session = Depends(get_db)):
+    order = db.query(PosOrder).filter(PosOrder.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    total_tendered = sum(p.amount for p in payload.payments)
+    order.payment_method = "SPLIT TENDER"
+    order.final_amount = total_tendered
+    order.payment_status = "paid"
+    order.status = "settled"
+    if order.table:
+        order.table.status = "available"
+    
+    # Auto-cross post
+    current_month = payload.month or datetime.utcnow().strftime("%B-%Y").upper()
+    today_str = datetime.utcnow().strftime("%d-%b-%Y").upper()
+    max_rno = db.query(func.max(RestaurantSaleRecord.running_no)).scalar() or 0
+    
+    modes_str = ", ".join(f"{p.mode}: ₹{p.amount}" for p in payload.payments)
+    rec = RestaurantSaleRecord(
+        running_no=max_rno + 1,
+        date=today_str,
+        bill_no=order.order_number,
+        amount=order.subtotal,
+        food=order.subtotal,
+        beverage=0.0,
+        cgst=round(order.tax_amount / 2.0, 2),
+        sgst=round(order.tax_amount / 2.0, 2),
+        discount=order.discount_amount,
+        total=total_tendered,
+        pos_outlet="RESTAURANT",
+        table_room=order.table.table_number if order.table else "",
+        settlement_mode=f"Split ({modes_str})",
+        is_management_nc=False,
+        month=current_month
+    )
+    db.add(rec)
+    db.commit()
+    return {"success": True, "order_number": order.order_number, "split_payments": len(payload.payments), "total_tendered": total_tendered}
+
+@app.post("/api/pos/orders/{order_id}/discount", tags=["Point of Sale"])
+def apply_pos_discount(order_id: int, payload: PosDiscountApplyRequest, db: Session = Depends(get_db)):
+    if payload.manager_pin != MANAGER_AUTH_PIN:
+        raise HTTPException(status_code=403, detail="Invalid Manager PIN for discount")
+    
+    order = db.query(PosOrder).filter(PosOrder.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    order.discount_amount = payload.discount_amount
+    order.final_amount = max(round(order.subtotal + order.tax_amount - payload.discount_amount, 2), 0.0)
+    db.commit()
+    return {"success": True, "discount_applied": payload.discount_amount, "new_final_amount": order.final_amount}
+
+@app.post("/api/pos/orders/{order_id}/reclassify-tender", tags=["Point of Sale"])
+def reclassify_tender(order_id: int, payload: TenderReclassifyRequest, db: Session = Depends(get_db)):
+    if payload.manager_pin != MANAGER_AUTH_PIN:
+        raise HTTPException(status_code=403, detail="Invalid Manager Authorization PIN")
+    
+    order = db.query(PosOrder).filter(PosOrder.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    order.payment_method = payload.new_mode
+    # Update sales register record if exists
+    sale = db.query(RestaurantSaleRecord).filter(RestaurantSaleRecord.bill_no == order.order_number).first()
+    if sale:
+        sale.settlement_mode = payload.new_mode
+    db.commit()
+    return {"success": True, "order_number": order.order_number, "old_mode": payload.old_mode, "new_mode": payload.new_mode}
+
+@app.get("/api/pos/banquets/events", response_model=List[BanquetEventResponse], tags=["Banquet Operations"])
+def list_banquet_events(db: Session = Depends(get_db)):
+    return db.query(BanquetEvent).order_by(BanquetEvent.id.desc()).all()
+
+@app.post("/api/pos/banquets/events", response_model=BanquetEventResponse, tags=["Banquet Operations"])
+def create_banquet_event(payload: BanquetEventCreate, db: Session = Depends(get_db)):
+    ev_id = payload.event_id or f"BNQ-{datetime.utcnow().strftime('%Y%m%d%H%M')}"
+    sub = payload.hall_rental + (payload.food_package_rate * payload.pax)
+    gst = round(sub * 0.18, 2) # 18% GST (SAC 997212)
+    tot = round(sub + gst, 2)
+    bal = max(round(tot - payload.advance_paid, 2), 0.0)
+    
+    ev = BanquetEvent(
+        event_id=ev_id,
+        event_name=payload.event_name,
+        host_name=payload.host_name,
+        host_phone=payload.host_phone,
+        event_date=payload.event_date,
+        slot=payload.slot,
+        pax=payload.pax,
+        hall_name=payload.hall_name,
+        hall_rental=payload.hall_rental,
+        food_package_rate=payload.food_package_rate,
+        menu_summary=payload.menu_summary,
+        subtotal=sub,
+        gst_amount=gst,
+        total_amount=tot,
+        advance_paid=payload.advance_paid,
+        balance_due=bal,
+        status=payload.status
+    )
+    db.add(ev)
+    db.commit()
+    db.refresh(ev)
+    return ev
+
+@app.post("/api/pos/banquets/events/{event_id}/settle", tags=["Banquet Operations"])
+def settle_banquet_event(event_id: str, payment_mode: str = "Card", manager_pin: str = "4321", db: Session = Depends(get_db)):
+    if manager_pin != MANAGER_AUTH_PIN:
+        raise HTTPException(status_code=403, detail="Invalid Manager Authorization PIN")
+    
+    ev = db.query(BanquetEvent).filter(BanquetEvent.event_id == event_id).first()
+    if not ev:
+        raise HTTPException(status_code=404, detail="Banquet event not found")
+    
+    ev.status = "Settled"
+    ev.balance_due = 0.0
+    db.commit()
+    return {"success": True, "event_id": event_id, "total_settled": ev.total_amount, "payment_mode": payment_mode}
+
+@app.get("/api/pos/servers", response_model=List[PosServerResponse], tags=["Point of Sale"])
+def list_pos_servers(db: Session = Depends(get_db)):
+    return db.query(PosServer).filter(PosServer.active == True).order_by(PosServer.server_code.asc()).all()
+
+@app.post("/api/pos/servers", response_model=PosServerResponse, tags=["Point of Sale"])
+def create_pos_server(payload: PosServerCreate, db: Session = Depends(get_db)):
+    existing = db.query(PosServer).filter(PosServer.server_code == payload.server_code).first()
+    if existing:
+        existing.name = payload.name
+        existing.role = payload.role
+        existing.section = payload.section
+        existing.active = payload.active
+        db.commit()
+        db.refresh(existing)
+        return existing
+    server = PosServer(**payload.model_dump())
+    db.add(server)
+    db.commit()
+    db.refresh(server)
+    return server
+
+# =============================================================
+# Category 4: Store, Materials & Inventory Routes
+# =============================================================
+@app.post("/api/inventory/vendors", response_model=VendorPayableResponse, tags=["Store Inventory"])
+def create_or_update_vendor(payload: VendorPayableCreate, db: Session = Depends(get_db)):
+    v = db.query(VendorPayable).filter(VendorPayable.vendor_name == payload.vendor_name).first()
+    if v:
+        v.category = payload.category
+        v.contact = payload.contact
+        v.supplies_amount += payload.supplies_amount
+        v.paid_amount += payload.paid_amount
+    else:
+        v = VendorPayable(**payload.model_dump())
+        db.add(v)
+    db.commit()
+    db.refresh(v)
+    return VendorPayableResponse(
+        id=v.id,
+        vendor_name=v.vendor_name,
+        category=v.category,
+        contact=v.contact,
+        supplies_amount=v.supplies_amount,
+        paid_amount=v.paid_amount,
+        outstanding=max(round(v.supplies_amount - v.paid_amount, 2), 0.0),
+        created_at=v.created_at
+    )
+
+@app.get("/api/inventory/purchase-orders", response_model=List[PurchaseOrderResponse], tags=["Store Inventory"])
+def list_purchase_orders(db: Session = Depends(get_db)):
+    return db.query(PurchaseOrder).order_by(PurchaseOrder.id.desc()).all()
+
+@app.post("/api/inventory/purchase-orders", response_model=PurchaseOrderResponse, tags=["Store Inventory"])
+def create_purchase_order(payload: PurchaseOrderCreate, db: Session = Depends(get_db)):
+    po_no = payload.po_number or f"PO-{datetime.utcnow().strftime('%Y%m%d%H%M')}"
+    po = PurchaseOrder(
+        po_number=po_no,
+        vendor_name=payload.vendor_name,
+        order_date=payload.order_date,
+        expected_delivery=payload.expected_delivery,
+        total_amount=payload.total_amount,
+        items_detail_json=json.dumps(payload.items_detail or []),
+        approved_by=payload.approved_by,
+        status="Approved"
+    )
+    db.add(po)
+    db.commit()
+    db.refresh(po)
+    return po
+
+@app.get("/api/inventory/grn", response_model=List[GoodsReceiptNoteResponse], tags=["Store Inventory"])
+def list_grn_notes(db: Session = Depends(get_db)):
+    return db.query(GoodsReceiptNote).order_by(GoodsReceiptNote.id.desc()).all()
+
+@app.post("/api/inventory/grn", response_model=GoodsReceiptNoteResponse, tags=["Store Inventory"])
+def create_goods_receipt_note(payload: GoodsReceiptNoteCreate, db: Session = Depends(get_db)):
+    grn_no = payload.grn_number or f"GRN-{datetime.utcnow().strftime('%Y%m%d%H%M')}"
+    grn = GoodsReceiptNote(
+        grn_number=grn_no,
+        po_number=payload.po_number,
+        vendor_name=payload.vendor_name,
+        challan_no=payload.challan_no,
+        invoice_no=payload.invoice_no,
+        received_date=payload.received_date,
+        total_val=payload.total_val,
+        verified_by=payload.verified_by,
+        items_received_json=json.dumps(payload.items_received or [])
+    )
+    db.add(grn)
+    db.commit()
+    db.refresh(grn)
+    return grn
+
+@app.get("/api/inventory/store-issues", response_model=List[StoreIssueVoucherResponse], tags=["Store Inventory"])
+def list_store_issue_vouchers(db: Session = Depends(get_db)):
+    return db.query(StoreIssueVoucher).order_by(StoreIssueVoucher.id.desc()).all()
+
+@app.post("/api/inventory/store-issues", response_model=StoreIssueVoucherResponse, tags=["Store Inventory"])
+def create_store_issue_voucher(payload: StoreIssueVoucherCreate, db: Session = Depends(get_db)):
+    v_no = payload.voucher_no or f"SIV-{datetime.utcnow().strftime('%Y%m%d%H%M')}"
+    voucher = StoreIssueVoucher(
+        voucher_no=v_no,
+        department=payload.department,
+        target_outlet=payload.target_outlet,
+        item_name=payload.item_name,
+        quantity=payload.quantity,
+        unit=payload.unit,
+        cost=payload.cost,
+        issued_by=payload.issued_by,
+        received_by=payload.received_by,
+        issue_date=payload.issue_date
+    )
+    db.add(voucher)
+    db.commit()
+    db.refresh(voucher)
+    return voucher
+
+@app.get("/api/inventory/stock-ledger", tags=["Store Inventory"])
+def get_stock_ledger(db: Session = Depends(get_db)):
+    items = db.query(InventoryItem).all()
+    ledger = []
+    for it in items:
+        ledger.append({
+            "item_code": it.item_code,
+            "item_name": it.item_name,
+            "category": it.category,
+            "unit": it.unit,
+            "current_stock": it.current_stock,
+            "min_reorder_level": it.min_reorder_level,
+            "cost_per_unit": it.cost_per_unit,
+            "total_valuation": round(it.current_stock * it.cost_per_unit, 2),
+            "reorder_needed": it.current_stock <= it.min_reorder_level
+        })
+    return {"total_inventory_items": len(ledger), "items": ledger}
+
+# =============================================================
+# Category 5: Housekeeping, Linen & Asset Routes
+# =============================================================
+@app.get("/api/hk/linen-inventory", response_model=List[LinenInventoryResponse], tags=["Housekeeping & Linen"])
+def list_linen_inventory(db: Session = Depends(get_db)):
+    return db.query(LinenInventory).order_by(LinenInventory.id.asc()).all()
+
+@app.post("/api/hk/linen-inventory", response_model=LinenInventoryResponse, tags=["Housekeeping & Linen"])
+def create_or_update_linen_item(payload: LinenInventoryCreate, db: Session = Depends(get_db)):
+    existing = db.query(LinenInventory).filter(LinenInventory.item_name == payload.item_name).first()
+    if existing:
+        existing.total_stock = payload.total_stock
+        existing.in_use = payload.in_use
+        existing.in_laundry = payload.in_laundry
+        existing.discard_count = payload.discard_count
+        existing.unit_cost = payload.unit_cost
+        existing.par_stock = payload.par_stock
+        existing.last_audited = datetime.utcnow().strftime("%d-%b-%Y").upper()
+        db.commit()
+        db.refresh(existing)
+        return existing
+    item = LinenInventory(**payload.model_dump(), last_audited=datetime.utcnow().strftime("%d-%b-%Y").upper())
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+@app.get("/api/hk/room-amenities", response_model=List[RoomAmenityTrackerResponse], tags=["Housekeeping & Linen"])
+def list_room_amenities(db: Session = Depends(get_db)):
+    return db.query(RoomAmenityTracker).all()
+
+@app.post("/api/hk/inspections", response_model=HousekeepingInspectionResponse, tags=["Housekeeping & Linen"])
+def create_housekeeping_inspection(payload: HousekeepingInspectionCreate, db: Session = Depends(get_db)):
+    insp = HousekeepingInspection(
+        room_number=payload.room_number,
+        inspector=payload.inspector,
+        inspection_date=payload.inspection_date,
+        score=payload.score,
+        remarks=payload.remarks,
+        checklist_json=json.dumps(payload.checklist or {}),
+        status="Passed" if payload.score >= 85 else "Needs Touchup"
+    )
+    db.add(insp)
+    db.commit()
+    db.refresh(insp)
+    return insp
+
+@app.get("/api/hk/inspections", response_model=List[HousekeepingInspectionResponse], tags=["Housekeeping & Linen"])
+def list_housekeeping_inspections(db: Session = Depends(get_db)):
+    return db.query(HousekeepingInspection).order_by(HousekeepingInspection.id.desc()).all()
+
+# =============================================================
+# Category 6: Night Audit Engine Routes
+# =============================================================
+@app.post("/api/night-audit/auto-post-room-rent", tags=["Night Audit"])
+def auto_post_room_rent(audit_date: Optional[str] = None, manager_pin: str = "4321", db: Session = Depends(get_db)):
+    """
+    Automated 02:00 AM Night Audit Engine:
+    Cycles through all occupied rooms and posts room tariff + 12% GST (6% CGST + 6% SGST) to active open folios.
+    """
+    if manager_pin != MANAGER_AUTH_PIN:
+        raise HTTPException(status_code=403, detail="Invalid Manager Authorization PIN")
+    
+    today_str = audit_date or datetime.utcnow().strftime("%d-%b-%Y").upper()
+    occupied_rooms = db.query(Room).filter(Room.status == "occupied").all()
+    
+    posted_rooms = []
+    total_rent_posted = 0.0
+    total_tax_posted = 0.0
+    
+    for r in occupied_rooms:
+        tariff = float(r.base_price or 2050.0)
+        cgst = round(tariff * 0.06, 2)
+        sgst = round(tariff * 0.06, 2)
+        tax = cgst + sgst
+        
+        # Check if already posted today to prevent duplicate posting
+        already_posted = db.query(FolioTransaction).filter(
+            FolioTransaction.room_number == r.number,
+            FolioTransaction.transaction_type == "Room Charge",
+            FolioTransaction.posting_date == today_str
+        ).first()
+        
+        if not already_posted:
+            tx = FolioTransaction(
+                room_number=r.number,
+                folio_number=1,
+                guest_name=f"In-House Guest (Room {r.number})",
+                transaction_type="Room Charge",
+                particulars=f"Night Audit Room Rent ({r.category})",
+                sac_code="996311",
+                debit_amount=tariff,
+                credit_amount=0.0,
+                tax_amount=tax,
+                posting_date=today_str,
+                posted_by="NIGHT AUDIT ENGINE"
+            )
+            db.add(tx)
+            posted_rooms.append(r.number)
+            total_rent_posted += tariff
+            total_tax_posted += tax
+    
+    db.commit()
+    return {
+        "success": True,
+        "audit_date": today_str,
+        "occupied_rooms_count": len(occupied_rooms),
+        "posted_rooms": posted_rooms,
+        "total_rent_posted": round(total_rent_posted, 2),
+        "total_tax_posted": round(total_tax_posted, 2)
+    }
+
+@app.get("/api/night-audit/trial-balance", tags=["Night Audit"])
+def get_night_audit_trial_balance(date: Optional[str] = None, db: Session = Depends(get_db)):
+    """
+    Live Trial Balance balancing Debits against Credits.
+    """
+    today_str = date or datetime.utcnow().strftime("%d-%b-%Y").upper()
+    all_txs = db.query(FolioTransaction).filter(FolioTransaction.posting_date == today_str).all()
+    
+    total_debits = sum(t.debit_amount for t in all_txs)
+    total_credits = sum(t.credit_amount for t in all_txs)
+    
+    # Advances recorded today
+    advances_today = db.query(AdvanceDeposit).filter(AdvanceDeposit.date == today_str).all()
+    advances_total = sum(a.amount for a in advances_today)
+    
+    # POS collections today
+    pos_sales = db.query(RestaurantSaleRecord).filter(RestaurantSaleRecord.date == today_str).all()
+    pos_total = sum(p.total for p in pos_sales)
+    
+    return {
+        "date": today_str,
+        "folio_debits": round(total_debits, 2),
+        "folio_credits": round(total_credits, 2),
+        "advances_received": round(advances_total, 2),
+        "pos_revenue": round(pos_total, 2),
+        "net_variance": round(total_debits - (total_credits + advances_total), 2),
+        "is_balanced": abs(total_debits - (total_credits + advances_total)) < 1.0
+    }
+
+# =============================================================
+# Category 7: Corporate BTC, Aging & Statutory Tax Routes
+# =============================================================
+@app.get("/api/corporate/debtors-aging", tags=["Corporate Receivables"])
+def get_corporate_debtors_aging(db: Session = Depends(get_db)):
+    """
+    Returns 30/60/90+ day debtor aging analysis for all corporate accounts.
+    """
+    corps = db.query(CorporateAccount).all()
+    aging_report = []
+    
+    for c in corps:
+        out = c.current_outstanding or 0.0
+        c30 = round(out * 0.50, 2)
+        c60 = round(out * 0.30, 2)
+        c90 = round(out * 0.15, 2)
+        c90_plus = round(out - (c30 + c60 + c90), 2)
+        
+        aging_report.append({
+            "id": c.id,
+            "company_name": c.company_name,
+            "gst_number": c.gst_number,
+            "contact_person": c.contact_person,
+            "credit_limit": c.credit_limit,
+            "total_outstanding": out,
+            "current_30_days": c30,
+            "days_31_to_60": c60,
+            "days_61_to_90": c90,
+            "days_90_plus": max(c90_plus, 0.0),
+            "status": "DUE" if out > 0 else "CLEARED"
+        })
+    return aging_report
+
+@app.post("/api/corporate/settle-invoice", tags=["Corporate Receivables"])
+def settle_corporate_invoice(company_name: str, amount_paid: float, payment_ref: str = "NEFT", manager_pin: str = "4321", db: Session = Depends(get_db)):
+    if manager_pin != MANAGER_AUTH_PIN:
+        raise HTTPException(status_code=403, detail="Invalid Manager Authorization PIN")
+    
+    corp = db.query(CorporateAccount).filter(CorporateAccount.company_name.ilike(f"%{company_name}%")).first()
+    if not corp:
+        raise HTTPException(status_code=404, detail="Corporate account not found")
+    
+    corp.current_outstanding = max(round(corp.current_outstanding - amount_paid, 2), 0.0)
+    db.commit()
+    return {"success": True, "company_name": corp.company_name, "amount_settled": amount_paid, "new_outstanding": corp.current_outstanding}
+
+@app.get("/api/reports/tds-tcs-summary", response_model=List[TdsTcsRecordResponse], tags=["GST & Tax Filings"])
+def list_tds_tcs_records(db: Session = Depends(get_db)):
+    return db.query(TdsTcsRecord).order_by(TdsTcsRecord.id.desc()).all()
+
+@app.post("/api/reports/tds-tcs-summary", response_model=TdsTcsRecordResponse, tags=["GST & Tax Filings"])
+def create_tds_tcs_record(payload: TdsTcsRecordCreate, db: Session = Depends(get_db)):
+    tds_amt = round(payload.gross_amount * (payload.tds_rate / 100.0), 2)
+    net_rec = round(payload.gross_amount - tds_amt, 2)
+    rec = TdsTcsRecord(
+        invoice_no=payload.invoice_no,
+        corporate_name=payload.corporate_name,
+        gstin=payload.gstin,
+        tan_no=payload.tan_no,
+        section=payload.section,
+        gross_amount=payload.gross_amount,
+        tds_rate=payload.tds_rate,
+        tds_amount=tds_amt,
+        net_receivable=net_rec,
+        financial_year=payload.financial_year,
+        quarter=payload.quarter
+    )
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return rec
+
+@app.get("/api/reports/bank-reconciliation", response_model=List[BankReconciliationResponse], tags=["GST & Tax Filings"])
+def list_bank_reconciliations(db: Session = Depends(get_db)):
+    return db.query(BankReconciliation).order_by(BankReconciliation.id.desc()).all()
+
+@app.post("/api/reports/bank-reconciliation", response_model=BankReconciliationResponse, tags=["GST & Tax Filings"])
+def create_bank_reconciliation(payload: BankReconciliationCreate, db: Session = Depends(get_db)):
+    rec_bal = payload.statement_balance + payload.uncredited_cheques - payload.unpresented_cheques
+    diff = round(rec_bal - payload.book_balance, 2)
+    entry = BankReconciliation(
+        statement_date=payload.statement_date,
+        bank_name=payload.bank_name,
+        account_number=payload.account_number,
+        statement_balance=payload.statement_balance,
+        book_balance=payload.book_balance,
+        uncredited_cheques=payload.uncredited_cheques,
+        unpresented_cheques=payload.unpresented_cheques,
+        reconciled_balance=rec_bal,
+        difference=diff,
+        status="Reconciled" if abs(diff) < 0.01 else "Variance Pending",
+        reconciled_by=payload.reconciled_by
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
+
 
 

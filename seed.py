@@ -6,7 +6,8 @@ from models import (
     Room, RestaurantTable, InventoryItem, CorporateAccount, RoomDefect, MenuItem,
     Gstr1Filing, StaffAttendance, LaundryOrder,
     HotelSaleRecord, RestaurantSaleRecord,
-    StorePurchase, KitchenRequisition, VendorPayable
+    StorePurchase, KitchenRequisition, VendorPayable,
+    PoliceManifest, CashierShiftRecord, PosServer, LinenInventory, RoomAmenityTracker, BankReconciliation, TdsTcsRecord
 )
 
 def seed_database():
@@ -667,6 +668,108 @@ def seed_database():
                 db.add(RestaurantSaleRecord(**r))
             db.commit()
             print("✓ Seeded October 2026 Restaurant Sales Baseline.")
+
+        # -------------------------------------------------------------
+        # 14. Police Manifest Baseline (Muniguda Police Station)
+        # -------------------------------------------------------------
+        if db.query(PoliceManifest).count() == 0:
+            manifest_init = [
+                {"room_no": "102", "name": "Rajesh Sharma", "mobile": "9845012345", "age": 42, "gender": "Male", "id_proof_type": "Aadhaar Card", "id_proof_no": "9845-1234-8890", "address": "Flat 402, Sai Residency, Raipur, CG - 492001", "arrived_from": "Raipur Jn", "destination": "JK Paper Mills Ltd, Jaykaypur", "purpose": "Boiler Maintenance Audit", "vehicle_no": "CG-04-MB-8812", "check_in_time": "11-OCT-2026 09:30", "expected_check_out": "14-OCT-2026 12:00", "status": "In-House", "guest_type": "Corporate"},
+                {"room_no": "105", "name": "Debashis Mohanty", "mobile": "9437088192", "age": 38, "gender": "Male", "id_proof_type": "Driving License", "id_proof_no": "OD-18-2018-00912", "address": "Plot 12, Jagamara, Bhubaneswar - 751030", "arrived_from": "Bhubaneswar", "destination": "Vedanta Alumina Ltd, Lanjigarh", "purpose": "Process Automation Review", "vehicle_no": "OD-02-AK-9921", "check_in_time": "11-OCT-2026 11:15", "expected_check_out": "13-OCT-2026 10:00", "status": "In-House", "guest_type": "Corporate"},
+                {"room_no": "108", "name": "Sunil Patnaik", "mobile": "9178234510", "age": 29, "gender": "Male", "id_proof_type": "Aadhaar Card", "id_proof_no": "4451-9920-1123", "address": "Ward 4, Main Road, Muniguda, Rayagada - 765020", "arrived_from": "Visakhapatnam Jn", "destination": "Local Muniguda", "purpose": "Railway Transit Fresh-Up (Train 18518)", "vehicle_no": "Train (VSKP-KRBA)", "check_in_time": "11-OCT-2026 07:15", "expected_check_out": "11-OCT-2026 10:15", "status": "In-House", "guest_type": "Transit"},
+                {"room_no": "201", "name": "Anil Kumar", "mobile": "9938012390", "age": 46, "gender": "Male", "id_proof_type": "Aadhaar Card", "id_proof_no": "7721-3345-0981", "address": "Qtr B-14, Paper Mill Colony, Jaykaypur - 765017", "arrived_from": "Vizag Airport", "destination": "JK Paper Mills Ltd", "purpose": "Technical Delegation Lead", "vehicle_no": "OD-18-B-4412", "check_in_time": "11-OCT-2026 13:40", "expected_check_out": "15-OCT-2026 12:00", "status": "In-House", "guest_type": "Corporate"},
+                {"room_no": "203", "name": "Vikram Patel", "mobile": "9825099881", "age": 35, "gender": "Male", "id_proof_type": "Voter ID Card", "id_proof_no": "WBD0918234", "address": "B-201, Shanti Park, Surat, Gujarat - 395001", "arrived_from": "Surat / Raipur", "destination": "Utkal Alumina, Doraguda", "purpose": "Refractory Lining Inspection", "vehicle_no": "GJ-05-CR-1190", "check_in_time": "11-OCT-2026 14:10", "expected_check_out": "14-OCT-2026 11:00", "status": "In-House", "guest_type": "Corporate"}
+            ]
+            for m in manifest_init:
+                db.add(PoliceManifest(**m))
+            db.commit()
+            print("✓ Seeded Muniguda Police Thana Manifest Baseline.")
+
+        # -------------------------------------------------------------
+        # 15. Cashier Shift Baseline
+        # -------------------------------------------------------------
+        if db.query(CashierShiftRecord).count() == 0:
+            shifts_init = [
+                {"shift_id": "shift1", "shift_name": "Shift 1 — Morning", "cashier_name": "Ranjan Kumar Dash", "cashier_code": "FO-01", "accounting_date": "02-10-2026", "status": "CLOSED", "drawer_float": 2000.0, "safe_drop": 8000.0, "physical_cash": 2000.0, "denominations_json": json.dumps({"n500": 4, "n200": 0, "n100": 0, "coins": 0}), "collections_json": json.dumps({"cash": 12500, "upi": 9800, "card": 4500, "btc": 3200, "total": 30000}), "fnb_split_json": json.dumps({"roomService": 3200, "restaurant": 8500, "takeAway": 800}), "handover_notes": "Morning rush handled smoothly. All folio balances reconciled with night audit."},
+                {"shift_id": "shift2", "shift_name": "Shift 2 — Evening", "cashier_name": "Sneha Mohapatra", "cashier_code": "FO-02", "accounting_date": "02-10-2026", "status": "OPEN", "drawer_float": 2000.0, "safe_drop": 0.0, "physical_cash": 4500.0, "denominations_json": json.dumps({"n500": 8, "n200": 2, "n100": 1, "coins": 0}), "collections_json": json.dumps({"cash": 6500, "upi": 4200, "card": 1200, "btc": 0, "total": 11900}), "fnb_split_json": json.dumps({"roomService": 1400, "restaurant": 4800, "takeAway": 300}), "handover_notes": "Active evening check-ins. JK Paper corporate group arriving at 20:00."}
+            ]
+            for s in shifts_init:
+                db.add(CashierShiftRecord(**s))
+            db.commit()
+            print("✓ Seeded Cashier Shifts Baseline.")
+
+        # -------------------------------------------------------------
+        # 16. POS Servers (Captains & Stewards)
+        # -------------------------------------------------------------
+        if db.query(PosServer).count() == 0:
+            servers_init = [
+                {"server_code": "C-01", "name": "Manash Ranjan Sahu", "role": "Captain", "section": "Restaurant & Room Service", "active": True},
+                {"server_code": "S-01", "name": "Ranjan Kumar", "role": "Steward", "section": "Restaurant", "active": True},
+                {"server_code": "S-02", "name": "Subrat Nayak", "role": "Steward", "section": "Dining Floor", "active": True},
+                {"server_code": "S-03", "name": "Kailash Gouda", "role": "Steward", "section": "Room Service", "active": True},
+                {"server_code": "S-04", "name": "Sneha Mohapatra", "role": "Captain", "section": "Banquet & Floor", "active": True}
+            ]
+            for sv in servers_init:
+                db.add(PosServer(**sv))
+            db.commit()
+            print("✓ Seeded POS Servers Baseline.")
+
+        # -------------------------------------------------------------
+        # 17. Linen Inventory Baseline
+        # -------------------------------------------------------------
+        if db.query(LinenInventory).count() == 0:
+            linen_init = [
+                {"item_name": "King Bedsheet White (300 TC)", "category": "Bed Linen", "total_stock": 120, "in_use": 54, "in_laundry": 26, "discard_count": 2, "unit_cost": 550.0, "par_stock": 140, "last_audited": "01-OCT-2026"},
+                {"item_name": "Bath Towel White (650 GSM)", "category": "Bath Linen", "total_stock": 90, "in_use": 45, "in_laundry": 20, "discard_count": 1, "unit_cost": 380.0, "par_stock": 100, "last_audited": "01-OCT-2026"},
+                {"item_name": "Hand Towel White (450 GSM)", "category": "Bath Linen", "total_stock": 80, "in_use": 40, "in_laundry": 15, "discard_count": 0, "unit_cost": 180.0, "par_stock": 90, "last_audited": "01-OCT-2026"},
+                {"item_name": "Pillow Cover White (Percale)", "category": "Bed Linen", "total_stock": 150, "in_use": 80, "in_laundry": 30, "discard_count": 3, "unit_cost": 120.0, "par_stock": 160, "last_audited": "01-OCT-2026"},
+                {"item_name": "Duvet Cover White (Striped)", "category": "Bed Linen", "total_stock": 60, "in_use": 27, "in_laundry": 12, "discard_count": 0, "unit_cost": 850.0, "par_stock": 70, "last_audited": "01-OCT-2026"}
+            ]
+            for ln in linen_init:
+                db.add(LinenInventory(**ln))
+            db.commit()
+            print("✓ Seeded Linen Inventory Baseline.")
+
+        # -------------------------------------------------------------
+        # 18. Room Amenity Tracker Baseline
+        # -------------------------------------------------------------
+        if db.query(RoomAmenityTracker).count() == 0:
+            amenities_init = [
+                {"item_name": "Herbal Dental Kit", "par_stock": 300, "current_stock": 210, "unit": "Pcs", "daily_consumption": 25},
+                {"item_name": "Hotel Elite Glycerin Soap 30g", "par_stock": 400, "current_stock": 280, "unit": "Pcs", "daily_consumption": 35},
+                {"item_name": "Herbal Shampoo Bottle 30ml", "par_stock": 350, "current_stock": 240, "unit": "Bottles", "daily_consumption": 28},
+                {"item_name": "Packaged Drinking Water 1L", "par_stock": 500, "current_stock": 360, "unit": "Bottles", "daily_consumption": 54}
+            ]
+            for am in amenities_init:
+                db.add(RoomAmenityTracker(**am))
+            db.commit()
+            print("✓ Seeded Room Amenities Baseline.")
+
+        # -------------------------------------------------------------
+        # 19. Bank Reconciliation Baseline
+        # -------------------------------------------------------------
+        if db.query(BankReconciliation).count() == 0:
+            bank_init = [
+                {"statement_date": "30-SEP-2026", "bank_name": "State Bank of India (SBI) - Muniguda Branch", "account_number": "38910294812", "statement_balance": 482500.0, "book_balance": 482500.0, "uncredited_cheques": 0.0, "unpresented_cheques": 0.0, "reconciled_balance": 482500.0, "difference": 0.0, "status": "Reconciled", "reconciled_by": "CHIEF ACCOUNTANT"},
+                {"statement_date": "31-AUG-2026", "bank_name": "State Bank of India (SBI) - Muniguda Branch", "account_number": "38910294812", "statement_balance": 395400.0, "book_balance": 395400.0, "uncredited_cheques": 0.0, "unpresented_cheques": 0.0, "reconciled_balance": 395400.0, "difference": 0.0, "status": "Reconciled", "reconciled_by": "CHIEF ACCOUNTANT"}
+            ]
+            for bk in bank_init:
+                db.add(BankReconciliation(**bk))
+            db.commit()
+            print("✓ Seeded Bank Reconciliation Baseline.")
+
+        # -------------------------------------------------------------
+        # 20. TDS / TCS Statutory Tax Records Baseline
+        # -------------------------------------------------------------
+        if db.query(TdsTcsRecord).count() == 0:
+            tds_init = [
+                {"invoice_no": "INV/202609/012", "corporate_name": "JK Paper Limited", "gstin": "21AAACJ0123L1Z8", "tan_no": "BBNJ01294A", "section": "194C", "gross_amount": 45000.0, "tds_rate": 2.0, "tds_amount": 900.0, "net_receivable": 44100.0, "financial_year": "2026-27", "quarter": "Q2"},
+                {"invoice_no": "INV/202609/018", "corporate_name": "Utkal Alumina International Ltd", "gstin": "21AAACU9918M1Z2", "tan_no": "RGDA00192B", "section": "194C", "gross_amount": 32000.0, "tds_rate": 2.0, "tds_amount": 640.0, "net_receivable": 31360.0, "financial_year": "2026-27", "quarter": "Q2"}
+            ]
+            for td in tds_init:
+                db.add(TdsTcsRecord(**td))
+            db.commit()
+            print("✓ Seeded TDS / TCS Statutory Baseline.")
 
     except Exception as e:
         db.rollback()

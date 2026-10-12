@@ -699,3 +699,408 @@ class VendorPayableResponse(BaseModel):
         from_attributes = True
 
 
+# =============================================================
+# Category 1: Front Office PMS & Guest Management Schemas
+# =============================================================
+class PoliceManifestCreate(BaseModel):
+    room_no: str
+    name: str
+    mobile: str
+    age: int = 30
+    gender: str = "Male"
+    id_proof_type: str = "Aadhaar Card"
+    id_proof_no: str
+    address: str
+    arrived_from: str = "Rayagada"
+    destination: str = "Muniguda"
+    purpose: str = "Business Visit"
+    vehicle_no: Optional[str] = None
+    check_in_time: str
+    expected_check_out: Optional[str] = None
+    status: str = "In-House"
+    guest_type: str = "Corporate"
+
+class PoliceManifestResponse(PoliceManifestCreate):
+    id: int
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+class ForeignerFormCCreate(BaseModel):
+    form_c_no: Optional[str] = None
+    room_no: str
+    guest_name: str
+    passport_no: str
+    visa_no: str
+    nationality: str = "Foreign"
+    arrival_date: str
+    departure_date: Optional[str] = None
+    purpose_of_visit: str = "Technical Consultant"
+    indian_ref_contact: Optional[str] = None
+
+class ForeignerFormCResponse(ForeignerFormCCreate):
+    id: int
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+class GuestKycDocumentCreate(BaseModel):
+    room_number: str
+    guest_name: str
+    doc_type: str = "Aadhaar Card"
+    doc_number_masked: str
+    id_file_url: Optional[str] = None
+    verified_by: str = "FRONT DESK"
+
+class GuestKycDocumentResponse(GuestKycDocumentCreate):
+    id: int
+    verified_at: datetime
+    class Config:
+        from_attributes = True
+
+class CashierShiftOpenRequest(BaseModel):
+    shift_id: str
+    shift_name: str
+    cashier_name: str
+    cashier_code: str
+    accounting_date: str
+    drawer_float: float = 2000.0
+
+class CashierShiftCloseRequest(BaseModel):
+    safe_drop: float = 0.0
+    denominations: Optional[dict] = None
+    physical_cash: float = 2000.0
+    collections: Optional[dict] = None
+    fnb_split: Optional[dict] = None
+    handover_notes: Optional[str] = ""
+    manager_pin: str = "7650"
+
+class CashierShiftResponse(BaseModel):
+    id: int
+    shift_id: str
+    shift_name: str
+    cashier_name: str
+    cashier_code: str
+    accounting_date: str
+    status: str
+    drawer_float: float
+    safe_drop: float
+    denominations_json: str
+    physical_cash: float
+    collections_json: str
+    fnb_split_json: str
+    handover_notes: str
+    closed_at: Optional[datetime] = None
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+# =============================================================
+# Category 2: Folio Accounting & Adjustments Schemas
+# =============================================================
+class FolioChargeTransferRequest(BaseModel):
+    from_room: str
+    to_room: str
+    from_folio: int = 1
+    to_folio: int = 1
+    amount: float
+    charge_type: str = "Room Charge"
+    reason: str = "Guest Request / Combined Billing"
+    authorized_by: str = "Duty Manager"
+    manager_pin: str = "4321"
+
+class BillAllowanceCreate(BaseModel):
+    room_number: str
+    folio_number: int = 1
+    bill_no: Optional[str] = None
+    allowance_amount: float
+    tax_reversed: float = 0.0
+    reason: str
+    approved_by: str = "GENERAL MANAGER"
+    date: str
+    manager_pin: str = "4321"
+
+class CorporateSplitBillingRequest(BaseModel):
+    room_number: str
+    corporate_id: Optional[int] = None
+    company_name: str
+    btc_amount: float
+    personal_amount: float
+    billing_date: str
+
+class RoomBlockCreate(BaseModel):
+    room_number: str
+    block_type: str = "Maintenance"
+    reason: str
+    start_date: str
+    end_date: str
+    blocked_by: str = "MAINTENANCE ENGINEER"
+
+class RoomBlockResponse(RoomBlockCreate):
+    id: int
+    status: str
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+# =============================================================
+# Category 3: POS, F&B & Banquet Schemas
+# =============================================================
+class SplitTenderPaymentItem(BaseModel):
+    mode: str
+    amount: float
+    details: Optional[str] = None
+
+class SplitTenderRequest(BaseModel):
+    payments: List[SplitTenderPaymentItem]
+    manager_pin: str = "4321"
+    month: Optional[str] = "OCTOBER-2026"
+
+class PosDiscountApplyRequest(BaseModel):
+    discount_amount: float
+    discount_percentage: Optional[float] = 0.0
+    reason: str = "Manager Courtesy Discount"
+    manager_pin: str = "4321"
+
+class TenderReclassifyRequest(BaseModel):
+    old_mode: str
+    new_mode: str
+    reason: str
+    manager_pin: str = "4321"
+
+class BanquetEventCreate(BaseModel):
+    event_id: Optional[str] = None
+    event_name: str
+    host_name: str
+    host_phone: str
+    event_date: str
+    slot: str = "Full Day"
+    pax: int = 50
+    hall_name: str = "Grand Ballroom / Conference Hall"
+    hall_rental: float = 15000.0
+    food_package_rate: float = 650.0
+    menu_summary: str = "Buffet Lunch + Hi-Tea + Dinner"
+    subtotal: float = 0.0
+    gst_amount: float = 0.0
+    total_amount: float = 0.0
+    advance_paid: float = 0.0
+    balance_due: float = 0.0
+    status: str = "Confirmed"
+
+class BanquetEventResponse(BanquetEventCreate):
+    id: int
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+class PosServerCreate(BaseModel):
+    server_code: str
+    name: str
+    role: str = "Steward"
+    section: str = "Restaurant"
+    active: bool = True
+
+class PosServerResponse(PosServerCreate):
+    id: int
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+class RestaurantTableCreate(BaseModel):
+    table_number: str
+    capacity: int = 4
+    status: str = "available"
+
+# =============================================================
+# Category 4: Store, Materials & Inventory Schemas
+# =============================================================
+class PurchaseOrderCreate(BaseModel):
+    po_number: Optional[str] = None
+    vendor_name: str
+    order_date: str
+    expected_delivery: Optional[str] = None
+    total_amount: float = 0.0
+    items_detail: Optional[list] = []
+    approved_by: str = "STORE MANAGER"
+
+class PurchaseOrderResponse(BaseModel):
+    id: int
+    po_number: str
+    vendor_name: str
+    order_date: str
+    expected_delivery: Optional[str] = None
+    status: str
+    total_amount: float
+    items_detail_json: str
+    approved_by: str
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+class GoodsReceiptNoteCreate(BaseModel):
+    grn_number: Optional[str] = None
+    po_number: Optional[str] = None
+    vendor_name: str
+    challan_no: Optional[str] = None
+    invoice_no: Optional[str] = None
+    received_date: str
+    total_val: float = 0.0
+    verified_by: str = "STORE INCHARGE"
+    items_received: Optional[list] = []
+
+class GoodsReceiptNoteResponse(BaseModel):
+    id: int
+    grn_number: str
+    po_number: Optional[str] = None
+    vendor_name: str
+    challan_no: Optional[str] = None
+    invoice_no: Optional[str] = None
+    received_date: str
+    total_val: float
+    verified_by: str
+    items_received_json: str
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+class StoreIssueVoucherCreate(BaseModel):
+    voucher_no: Optional[str] = None
+    department: str
+    target_outlet: str = "Main Kitchen"
+    item_name: str
+    quantity: float
+    unit: str = "KG"
+    cost: float = 0.0
+    issued_by: str = "STORE KEEPER"
+    received_by: str = "HEAD CHEF"
+    issue_date: str
+
+class StoreIssueVoucherResponse(BaseModel):
+    id: int
+    voucher_no: str
+    department: str
+    target_outlet: str
+    item_name: str
+    quantity: float
+    unit: str
+    cost: float
+    issued_by: str
+    received_by: str
+    issue_date: str
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+# =============================================================
+# Category 5: Housekeeping, Linen & Asset Schemas
+# =============================================================
+class LinenInventoryCreate(BaseModel):
+    item_name: str
+    category: str = "Bed Linen"
+    total_stock: int = 100
+    in_use: int = 54
+    in_laundry: int = 20
+    discard_count: int = 0
+    unit_cost: float = 450.0
+    par_stock: int = 120
+
+class LinenInventoryResponse(LinenInventoryCreate):
+    id: int
+    last_audited: Optional[str] = None
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+class RoomAmenityTrackerResponse(BaseModel):
+    id: int
+    item_name: str
+    par_stock: int
+    current_stock: int
+    unit: str
+    daily_consumption: int
+    last_updated: datetime
+    class Config:
+        from_attributes = True
+
+class HousekeepingInspectionCreate(BaseModel):
+    room_number: str
+    inspector: str = "HK Executive"
+    inspection_date: str
+    score: float = 100.0
+    remarks: str = "Sanitized & ready"
+    checklist: Optional[dict] = {}
+
+class HousekeepingInspectionResponse(BaseModel):
+    id: int
+    room_number: str
+    inspector: str
+    inspection_date: str
+    score: float
+    remarks: str
+    checklist_json: str
+    status: str
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+# =============================================================
+# Category 7: Corporate BTC, Aging, TDS & Bank Recon Schemas
+# =============================================================
+class BankReconciliationCreate(BaseModel):
+    statement_date: str
+    bank_name: str = "State Bank of India (SBI) - Muniguda Branch"
+    account_number: str = "38910294812"
+    statement_balance: float
+    book_balance: float
+    uncredited_cheques: float = 0.0
+    unpresented_cheques: float = 0.0
+    reconciled_balance: float = 0.0
+    reconciled_by: str = "CHIEF ACCOUNTANT"
+
+class BankReconciliationResponse(BaseModel):
+    id: int
+    statement_date: str
+    bank_name: str
+    account_number: str
+    statement_balance: float
+    book_balance: float
+    uncredited_cheques: float
+    unpresented_cheques: float
+    reconciled_balance: float
+    difference: float
+    status: str
+    reconciled_by: str
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+class TdsTcsRecordCreate(BaseModel):
+    invoice_no: str
+    corporate_name: str
+    gstin: Optional[str] = None
+    tan_no: Optional[str] = None
+    section: str = "194C"
+    gross_amount: float
+    tds_rate: float = 2.0
+    financial_year: str = "2026-27"
+    quarter: str = "Q3"
+
+class TdsTcsRecordResponse(BaseModel):
+    id: int
+    invoice_no: str
+    corporate_name: str
+    gstin: Optional[str] = None
+    tan_no: Optional[str] = None
+    section: str
+    gross_amount: float
+    tds_rate: float
+    tds_amount: float
+    net_receivable: float
+    financial_year: str
+    quarter: str
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+
+

@@ -766,4 +766,38 @@ class TdsTcsRecord(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class TransitSlot(Base):
+    __tablename__ = "transit_slots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    room_number = Column(String(20), index=True, nullable=False)
+    guest_name = Column(String(120), nullable=False)
+    mobile = Column(String(20), nullable=False)
+    age = Column(Integer, default=30)
+    train_number = Column(String(50), nullable=False) # e.g. "18518 (Visakhapatnam - Korba Express)"
+    pnr_number = Column(String(50), nullable=True)
+    destination = Column(String(150), nullable=True)
+    rate_bracket = Column(Float, default=500.0) # ₹500 or ₹600 for 3 hours
+    check_in_time = Column(String(30), nullable=False)
+    expected_check_out = Column(String(30), nullable=False)
+    status = Column(String(30), default="Occupied") # 'Occupied', 'Completed', 'Extended'
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SalesPromotion(Base):
+    __tablename__ = "sales_promotions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    promo_code = Column(String(50), unique=True, index=True, nullable=False)
+    description = Column(String(255), nullable=False)
+    discount_percentage = Column(Float, default=0.0)
+    flat_discount_amount = Column(Float, default=0.0)
+    applicable_outlet = Column(String(50), default="ALL") # 'ALL', 'RESTAURANT', 'ROOM_SERVICE', 'BAR'
+    min_order_amount = Column(Float, default=0.0)
+    valid_from = Column(String(30), nullable=False)
+    valid_to = Column(String(30), nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 

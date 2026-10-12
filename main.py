@@ -28,7 +28,8 @@ from models import (
     BanquetEvent, PosServer,
     PurchaseOrder, GoodsReceiptNote, StoreIssueVoucher,
     LinenInventory, RoomAmenityTracker, HousekeepingInspection,
-    BankReconciliation, TdsTcsRecord
+    BankReconciliation, TdsTcsRecord,
+    TransitSlot, SalesPromotion
 )
 from schemas import (
     RoomCreate, RoomResponse, RoomStatusUpdate,
@@ -68,7 +69,11 @@ from schemas import (
     LinenInventoryCreate, LinenInventoryResponse, RoomAmenityTrackerResponse,
     HousekeepingInspectionCreate, HousekeepingInspectionResponse,
     BankReconciliationCreate, BankReconciliationResponse,
-    TdsTcsRecordCreate, TdsTcsRecordResponse
+    TdsTcsRecordCreate, TdsTcsRecordResponse,
+    TableCreate, TableUpdate, MenuItemUpdate,
+    TransitSlotCreate, TransitSlotResponse,
+    SalesPromotionCreate, SalesPromotionResponse,
+    CorporateAccountCreate, CorporateAccountUpdate
 )
 from seed import seed_database
 
@@ -2614,6 +2619,160 @@ def create_bank_reconciliation(payload: BankReconciliationCreate, db: Session = 
     db.commit()
     db.refresh(entry)
     return entry
+
+
+# =============================================================
+# Category 8: Table Master, Menu Master, Transit & Promotions
+# =============================================================
+@app.post("/api/pos/tables", tags=["Point of Sale"])
+def create_pos_table(payload: TableCreate, db: Session = Depends(get_db)):
+    existing = db.query(RestaurantTable).filter(RestaurantTable.table_number == payload.table_number).first()
+    if existing:
+        existing.capacity = payload.capacity
+        existing.status = payload.status
+        db.commit()
+        db.refresh(existing)
+        return existing
+    t = RestaurantTable(table_number=payload.table_number, capacity=payload.capacity, status=payload.status)
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    return t
+
+@app.put("/api/pos/tables/{table_id}", tags=["Point of Sale"])
+def update_pos_table(table_id: int, payload: TableUpdate, db: Session = Depends(get_db)):
+    t = db.query(RestaurantTable).filter(RestaurantTable.id == table_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Table not found")
+    if payload.table_number is not None:
+        t.table_number = payload.table_number
+    if payload.capacity is not None:
+        t.capacity = payload.capacity
+    if payload.status is not None:
+        t.status = payload.status
+    db.commit()
+    db.refresh(t)
+    return t
+
+@app.delete("/api/pos/tables/{table_id}", tags=["Point of Sale"])
+def delete_pos_table(table_id: int, db: Session = Depends(get_db)):
+    t = db.query(RestaurantTable).filter(RestaurantTable.id == table_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Table not found")
+    db.delete(t)
+    db.commit()
+    return {"success": True, "message": f"Table {t.table_number} deleted."}
+
+@app.post("/api/restaurant/menu", response_model=MenuItemResponse, status_code=status.HTTP_201_CREATED, tags=["Restaurant Menu"])
+def create_menu_item(payload: MenuItemCreate, db: Session = Depends(get_db)):
+    existing = db.query(MenuItem).filter(MenuItem.item_code == payload.item_code).first()
+    if existing:
+        for k, v in payload.model_dump().items():
+            setattr(existing, k, v)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    item = MenuItem(**payload.model_dump())
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+@app.put("/api/restaurant/menu/{item_id}", response_model=MenuItemResponse, tags=["Restaurant Menu"])
+def update_menu_item(item_id: int, payload: MenuItemUpdate, db: Session = Depends(get_db)):
+    item = db.query(MenuItem).filter(MenuItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Menu item not found")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        if v is not None:
+            setattr(item, k, v)
+    db.commit()
+    db.refresh(item)
+    return item
+
+@app.delete("/api/restaurant/menu/{item_id}", tags=["Restaurant Menu"])
+def delete_menu_item(item_id: int, db: Session = Depends(get_db)):
+    item = db.query(MenuItem).filter(MenuItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Menu item not found")
+    db.delete(item)
+    db.commit()
+    return {"success": True, "message": f"Item {item.name} deleted."}
+
+@app.get("/api/pms/transit-slots", response_model=List[TransitSlotResponse], tags=["Railway Transit"])
+def list_transit_slots(db: Session = Depends(get_db)):
+    return db.query(TransitSlot).order_by(TransitSlot.id.desc()).all()
+
+@app.post("/api/pms/transit-slots", response_model=TransitSlotResponse, status_code=status.HTTP_201_CREATED, tags=["Railway Transit"])
+def create_transit_slot(payload: TransitSlotCreate, db: Session = Depends(get_db)):
+    slot = TransitSlot(**payload.model_dump())
+    db.add(slot)
+    db.commit()
+    db.refresh(slot)
+    return slot
+
+@app.patch("/api/pms/transit-slots/{slot_id}/checkout", tags=["Railway Transit"])
+def checkout_transit_slot(slot_id: int, db: Session = Depends(get_db)):
+    slot = db.query(TransitSlot).filter(TransitSlot.id == slot_id).first()
+    if not slot:
+        raise HTTPException(status_code=404, detail="Transit slot not found")
+    slot.status = "Departed"
+    db.commit()
+    return {"success": True, "slot_id": slot_id, "status": "Departed"}
+
+@app.get("/api/pos/promotions", response_model=List[SalesPromotionResponse], tags=["Sales Promotions"])
+def list_sales_promotions(db: Session = Depends(get_db)):
+    return db.query(SalesPromotion).order_by(SalesPromotion.id.desc()).all()
+
+@app.post("/api/pos/promotions", response_model=SalesPromotionResponse, status_code=status.HTTP_201_CREATED, tags=["Sales Promotions"])
+def create_or_update_sales_promotion(payload: SalesPromotionCreate, db: Session = Depends(get_db)):
+    promo = db.query(SalesPromotion).filter(SalesPromotion.promo_code == payload.promo_code).first()
+    if promo:
+        for k, v in payload.model_dump().items():
+            setattr(promo, k, v)
+    else:
+        promo = SalesPromotion(**payload.model_dump())
+        db.add(promo)
+    db.commit()
+    db.refresh(promo)
+    return promo
+
+@app.delete("/api/pos/promotions/{promo_id}", tags=["Sales Promotions"])
+def delete_sales_promotion(promo_id: int, db: Session = Depends(get_db)):
+    promo = db.query(SalesPromotion).filter(SalesPromotion.id == promo_id).first()
+    if not promo:
+        raise HTTPException(status_code=404, detail="Promotion not found")
+    db.delete(promo)
+    db.commit()
+    return {"success": True, "message": f"Promotion {promo.promo_code} deleted."}
+
+@app.post("/api/corporate-accounts", response_model=CorporateAccountResponse, status_code=status.HTTP_201_CREATED, tags=["Corporate Receivables"])
+def create_corporate_account(payload: CorporateAccountCreate, db: Session = Depends(get_db)):
+    existing = db.query(CorporateAccount).filter(CorporateAccount.company_name == payload.company_name).first()
+    if existing:
+        for k, v in payload.model_dump().items():
+            setattr(existing, k, v)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    corp = CorporateAccount(**payload.model_dump(), current_outstanding=0.0)
+    db.add(corp)
+    db.commit()
+    db.refresh(corp)
+    return corp
+
+@app.put("/api/corporate-accounts/{company_id}", response_model=CorporateAccountResponse, tags=["Corporate Receivables"])
+def update_corporate_account(company_id: int, payload: CorporateAccountUpdate, db: Session = Depends(get_db)):
+    corp = db.query(CorporateAccount).filter(CorporateAccount.id == company_id).first()
+    if not corp:
+        raise HTTPException(status_code=404, detail="Corporate account not found")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        if v is not None:
+            setattr(corp, k, v)
+    db.commit()
+    db.refresh(corp)
+    return corp
+
 
 
 

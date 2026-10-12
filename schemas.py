@@ -1102,5 +1102,86 @@ class TdsTcsRecordResponse(BaseModel):
     class Config:
         from_attributes = True
 
+# Tables & Menu Management
+class TableCreate(BaseModel):
+    table_number: str
+    capacity: int = 4
+    status: str = "available"
+
+class TableUpdate(BaseModel):
+    table_number: Optional[str] = None
+    capacity: Optional[int] = None
+    status: Optional[str] = None
+
+class MenuItemCreate(BaseModel):
+    item_code: str
+    name: str
+    category: str
+    price: float
+    is_veg: bool = True
+    description: Optional[str] = None
+
+class MenuItemUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    price: Optional[float] = None
+    is_veg: Optional[bool] = None
+    description: Optional[str] = None
+
+# Railway Transit Slot Schemas
+class TransitSlotCreate(BaseModel):
+    room_number: str
+    guest_name: str
+    mobile: str
+    age: int = 30
+    train_number: str
+    pnr_number: Optional[str] = None
+    destination: Optional[str] = None
+    rate_bracket: float = 500.0
+    check_in_time: str
+    expected_check_out: str
+    status: str = "Occupied"
+
+class TransitSlotResponse(TransitSlotCreate):
+    id: int
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+# Sales Promotion Schemas
+class SalesPromotionCreate(BaseModel):
+    promo_code: str
+    description: str
+    discount_percentage: float = 0.0
+    flat_discount_amount: float = 0.0
+    applicable_outlet: str = "ALL"
+    min_order_amount: float = 0.0
+    valid_from: str
+    valid_to: str
+    is_active: bool = True
+
+class SalesPromotionResponse(SalesPromotionCreate):
+    id: int
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+# Corporate Account Master Schemas
+class CorporateAccountCreate(BaseModel):
+    company_name: str
+    gst_number: Optional[str] = None
+    contact_person: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    credit_limit: float = 100000.0
+
+class CorporateAccountUpdate(BaseModel):
+    company_name: Optional[str] = None
+    gst_number: Optional[str] = None
+    contact_person: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    credit_limit: Optional[float] = None
+
 
 

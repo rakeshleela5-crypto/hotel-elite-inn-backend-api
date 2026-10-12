@@ -7,7 +7,8 @@ from models import (
     Gstr1Filing, StaffAttendance, LaundryOrder,
     HotelSaleRecord, RestaurantSaleRecord,
     StorePurchase, KitchenRequisition, VendorPayable,
-    PoliceManifest, CashierShiftRecord, PosServer, LinenInventory, RoomAmenityTracker, BankReconciliation, TdsTcsRecord
+    PoliceManifest, CashierShiftRecord, PosServer, LinenInventory, RoomAmenityTracker, BankReconciliation, TdsTcsRecord,
+    BusinessSource, MarketSegment, PackageRate, LaundryItemRate
 )
 
 def seed_database():
@@ -770,6 +771,71 @@ def seed_database():
                 db.add(TdsTcsRecord(**td))
             db.commit()
             print("✓ Seeded TDS / TCS Statutory Baseline.")
+
+        # -------------------------------------------------------------
+        # 21. Business Sources Master (Video 29)
+        # -------------------------------------------------------------
+        if db.query(BusinessSource).count() == 0:
+            sources_init = [
+                {"code": "OTA", "name": "Online Travel Agent", "short_name": "OTA", "applicable_from": "01-JAN-2026", "status": "Active", "user": "MANAGER"},
+                {"code": "WAL", "name": "Walk-In Direct", "short_name": "WALKIN", "applicable_from": "01-JAN-2026", "status": "Active", "user": "MANAGER"},
+                {"code": "WEB", "name": "Hotel Direct Website (hotel-elite-inn.pages.dev)", "short_name": "DIRECT-WEB", "applicable_from": "01-JAN-2026", "status": "Active", "user": "MANAGER"},
+                {"code": "URO", "name": "Unit Reservation Office", "short_name": "URO", "applicable_from": "01-JAN-2026", "status": "Active", "user": "MANAGER"},
+                {"code": "USO", "name": "Unit Sales Office", "short_name": "USO", "applicable_from": "01-JAN-2026", "status": "Active", "user": "MANAGER"},
+                {"code": "MMT", "name": "MakeMyTrip / Goibibo Direct OTA", "short_name": "MMT", "applicable_from": "01-JAN-2026", "status": "Active", "user": "MANAGER"},
+                {"code": "BKG", "name": "Booking.com B.V.", "short_name": "BOOKING", "applicable_from": "01-JAN-2026", "status": "Active", "user": "MANAGER"},
+                {"code": "DIR", "name": "Direct Call / Front Desk Telephone", "short_name": "PHONE", "applicable_from": "01-JAN-2026", "status": "Active", "user": "MANAGER"}
+            ]
+            for s in sources_init:
+                db.add(BusinessSource(**s))
+            db.commit()
+            print("✓ Seeded Business Sources Baseline.")
+
+        # -------------------------------------------------------------
+        # 22. Market Segments Master (Video 30)
+        # -------------------------------------------------------------
+        if db.query(MarketSegment).count() == 0:
+            segments_init = [
+                {"code": "CVG", "name": "Corporate Business / Commercial", "short_name": "CORP", "applicable_from": "01-JAN-2026", "status": "Active", "user": "MANAGER"},
+                {"code": "FIT", "name": "Free Individual Traveler (Leisure/Direct)", "short_name": "FIT", "applicable_from": "01-JAN-2026", "status": "Active", "user": "MANAGER"},
+                {"code": "GRP", "name": "Group Tour & Delegation", "short_name": "GROUP", "applicable_from": "01-JAN-2026", "status": "Active", "user": "MANAGER"},
+                {"code": "GOV", "name": "Government Official / PSU Protocol", "short_name": "GOVT", "applicable_from": "01-JAN-2026", "status": "Active", "user": "MANAGER"},
+                {"code": "AIR", "name": "Railway / Station Transit Guest", "short_name": "TRANSIT", "applicable_from": "01-JAN-2026", "status": "Active", "user": "MANAGER"}
+            ]
+            for seg in segments_init:
+                db.add(MarketSegment(**seg))
+            db.commit()
+            print("✓ Seeded Market Segments Baseline.")
+
+        # -------------------------------------------------------------
+        # 23. Package Rates Master (Video 27)
+        # -------------------------------------------------------------
+        if db.query(PackageRate).count() == 0:
+            packages_init = [
+                {"code": "PKG-CORP", "name": "Executive Residency Bed & Board Package", "tier": "executive", "total_tariff": 2650.0, "room_tariff": 2050.0, "buffet_breakfast": 200.0, "dinner_buffet": 400.0, "sac_code": "996311", "tax_rate": 12.0, "status": "Active"},
+                {"code": "PKG-TEMPLE", "name": "Maa Majhighariani Darshan Pilgrimage Package", "tier": "deluxe", "total_tariff": 3200.0, "room_tariff": 1750.0, "buffet_breakfast": 250.0, "dinner_buffet": 400.0, "sac_code": "996311", "tax_rate": 12.0, "status": "Active"}
+            ]
+            for p in packages_init:
+                db.add(PackageRate(**p))
+            db.commit()
+            print("✓ Seeded Package Rates Baseline.")
+
+        # -------------------------------------------------------------
+        # 24. Laundry Rate Master (Videos 33 & 34)
+        # -------------------------------------------------------------
+        if db.query(LaundryItemRate).count() == 0:
+            laundry_rates_init = [
+                {"item_code": "1", "item_name": "SHIRT", "service_type": "Washing", "category": "Gentleman", "standard_charge": 80.0, "express_charge": 120.0, "tax_structure": "GST18_LAU", "currency": "Indian Rupees", "status": "Active"},
+                {"item_code": "1", "item_name": "SHIRT", "service_type": "Pressing", "category": "Gentleman", "standard_charge": 40.0, "express_charge": 60.0, "tax_structure": "GST18_LAU", "currency": "Indian Rupees", "status": "Active"},
+                {"item_code": "2", "item_name": "TROUSER", "service_type": "Washing", "category": "Gentleman", "standard_charge": 90.0, "express_charge": 135.0, "tax_structure": "GST18_LAU", "currency": "Indian Rupees", "status": "Active"},
+                {"item_code": "2", "item_name": "TROUSER", "service_type": "Pressing", "category": "Gentleman", "standard_charge": 50.0, "express_charge": 75.0, "tax_structure": "GST18_LAU", "currency": "Indian Rupees", "status": "Active"},
+                {"item_code": "3", "item_name": "SUIT (2 PC)", "service_type": "Dry Cleaning", "category": "Gentleman", "standard_charge": 350.0, "express_charge": 500.0, "tax_structure": "GST18_LAU", "currency": "Indian Rupees", "status": "Active"},
+                {"item_code": "4", "item_name": "SAREE (SILK)", "service_type": "Dry Cleaning", "category": "Ladies", "standard_charge": 220.0, "express_charge": 330.0, "tax_structure": "GST18_LAU", "currency": "Indian Rupees", "status": "Active"}
+            ]
+            for lr in laundry_rates_init:
+                db.add(LaundryItemRate(**lr))
+            db.commit()
+            print("✓ Seeded Laundry Rate Master Baseline.")
 
     except Exception as e:
         db.rollback()

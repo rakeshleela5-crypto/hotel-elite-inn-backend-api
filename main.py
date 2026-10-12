@@ -29,7 +29,8 @@ from models import (
     PurchaseOrder, GoodsReceiptNote, StoreIssueVoucher,
     LinenInventory, RoomAmenityTracker, HousekeepingInspection,
     BankReconciliation, TdsTcsRecord,
-    TransitSlot, SalesPromotion
+    TransitSlot, SalesPromotion,
+    BusinessSource, MarketSegment, PackageRate, LaundryItemRate, GuestComplaint
 )
 from schemas import (
     RoomCreate, RoomResponse, RoomStatusUpdate,
@@ -73,7 +74,12 @@ from schemas import (
     TableCreate, TableUpdate, MenuItemUpdate,
     TransitSlotCreate, TransitSlotResponse,
     SalesPromotionCreate, SalesPromotionResponse,
-    CorporateAccountCreate, CorporateAccountUpdate
+    CorporateAccountCreate, CorporateAccountUpdate,
+    BusinessSourceCreate, BusinessSourceResponse,
+    MarketSegmentCreate, MarketSegmentResponse,
+    PackageRateCreate, PackageRateResponse,
+    LaundryItemRateCreate, LaundryItemRateResponse,
+    GuestComplaintCreate, GuestComplaintResponse
 )
 from seed import seed_database
 
@@ -2774,5 +2780,123 @@ def update_corporate_account(company_id: int, payload: CorporateAccountUpdate, d
     return corp
 
 
+# =============================================================
+# Category 9: Business Sources, Market Segments, Packages & Complaints
+# =============================================================
+@app.get("/api/pms/business-sources", response_model=List[BusinessSourceResponse], tags=["IDS Sources & Segments"])
+def list_business_sources(db: Session = Depends(get_db)):
+    return db.query(BusinessSource).order_by(BusinessSource.id.asc()).all()
 
+@app.post("/api/pms/business-sources", response_model=BusinessSourceResponse, status_code=status.HTTP_201_CREATED, tags=["IDS Sources & Segments"])
+def create_business_source(payload: BusinessSourceCreate, db: Session = Depends(get_db)):
+    existing = db.query(BusinessSource).filter(BusinessSource.code == payload.code).first()
+    if existing:
+        for k, v in payload.model_dump().items():
+            setattr(existing, k, v)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    bs = BusinessSource(**payload.model_dump())
+    db.add(bs)
+    db.commit()
+    db.refresh(bs)
+    return bs
+
+@app.get("/api/pms/market-segments", response_model=List[MarketSegmentResponse], tags=["IDS Sources & Segments"])
+def list_market_segments(db: Session = Depends(get_db)):
+    return db.query(MarketSegment).order_by(MarketSegment.id.asc()).all()
+
+@app.post("/api/pms/market-segments", response_model=MarketSegmentResponse, status_code=status.HTTP_201_CREATED, tags=["IDS Sources & Segments"])
+def create_market_segment(payload: MarketSegmentCreate, db: Session = Depends(get_db)):
+    existing = db.query(MarketSegment).filter(MarketSegment.code == payload.code).first()
+    if existing:
+        for k, v in payload.model_dump().items():
+            setattr(existing, k, v)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    ms = MarketSegment(**payload.model_dump())
+    db.add(ms)
+    db.commit()
+    db.refresh(ms)
+    return ms
+
+@app.get("/api/pms/package-rates", response_model=List[PackageRateResponse], tags=["IDS Package Rates"])
+def list_package_rates(db: Session = Depends(get_db)):
+    return db.query(PackageRate).order_by(PackageRate.id.asc()).all()
+
+@app.post("/api/pms/package-rates", response_model=PackageRateResponse, status_code=status.HTTP_201_CREATED, tags=["IDS Package Rates"])
+def create_package_rate(payload: PackageRateCreate, db: Session = Depends(get_db)):
+    existing = db.query(PackageRate).filter(PackageRate.code == payload.code).first()
+    if existing:
+        for k, v in payload.model_dump().items():
+            setattr(existing, k, v)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    pr = PackageRate(**payload.model_dump())
+    db.add(pr)
+    db.commit()
+    db.refresh(pr)
+    return pr
+
+@app.get("/api/laundry/rate-master", response_model=List[LaundryItemRateResponse], tags=["Laundry Services"])
+def list_laundry_rate_master(service_type: Optional[str] = None, db: Session = Depends(get_db)):
+    q = db.query(LaundryItemRate)
+    if service_type:
+        q = q.filter(LaundryItemRate.service_type == service_type)
+    return q.order_by(LaundryItemRate.id.asc()).all()
+
+@app.post("/api/laundry/rate-master", response_model=LaundryItemRateResponse, status_code=status.HTTP_201_CREATED, tags=["Laundry Services"])
+def create_or_update_laundry_rate(payload: LaundryItemRateCreate, db: Session = Depends(get_db)):
+    existing = db.query(LaundryItemRate).filter(
+        LaundryItemRate.item_code == payload.item_code,
+        LaundryItemRate.service_type == payload.service_type
+    ).first()
+    if existing:
+        for k, v in payload.model_dump().items():
+            setattr(existing, k, v)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    rate = LaundryItemRate(**payload.model_dump())
+    db.add(rate)
+    db.commit()
+    db.refresh(rate)
+    return rate
+
+@app.get("/api/guest/complaints", response_model=List[GuestComplaintResponse], tags=["Guest Services"])
+def list_guest_complaints(status_filter: Optional[str] = None, db: Session = Depends(get_db)):
+    q = db.query(GuestComplaint)
+    if status_filter:
+        q = q.filter(GuestComplaint.status == status_filter)
+    return q.order_by(GuestComplaint.id.desc()).all()
+
+@app.post("/api/guest/complaints", response_model=GuestComplaintResponse, status_code=status.HTTP_201_CREATED, tags=["Guest Services"])
+def log_guest_complaint(payload: GuestComplaintCreate, db: Session = Depends(get_db)):
+    c_id = payload.complaint_id or f"CMP-{datetime.utcnow().strftime('%Y%m%d%H%M')}"
+    existing = db.query(GuestComplaint).filter(GuestComplaint.complaint_id == c_id).first()
+    if existing:
+        for k, v in payload.model_dump().items():
+            setattr(existing, k, v)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    comp = GuestComplaint(**payload.model_dump(), complaint_id=c_id)
+    db.add(comp)
+    db.commit()
+    db.refresh(comp)
+    return comp
+
+@app.patch("/api/guest/complaints/{complaint_id}/resolve", tags=["Guest Services"])
+def resolve_guest_complaint(complaint_id: str, attended_by: str = "Duty Manager", action_taken: str = "Issue resolved to guest satisfaction", db: Session = Depends(get_db)):
+    comp = db.query(GuestComplaint).filter(GuestComplaint.complaint_id == complaint_id).first()
+    if not comp:
+        raise HTTPException(status_code=404, detail="Guest complaint not found")
+    comp.status = "Resolved"
+    comp.attended_by = attended_by
+    comp.action_taken = action_taken
+    comp.resolved_at = datetime.utcnow()
+    db.commit()
+    return {"success": True, "complaint_id": complaint_id, "status": "Resolved"}
 

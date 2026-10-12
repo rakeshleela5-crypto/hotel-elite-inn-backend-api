@@ -36,6 +36,15 @@ class BookingCreate(BaseModel):
     check_out_date: datetime
     advance_paid: float = 0.0
     corporate_account_id: Optional[int] = None
+    grc_number: Optional[str] = None
+    num_pax: int = 1
+    second_pax_name: Optional[str] = None
+    second_pax_phone: Optional[str] = None
+    second_pax_id: Optional[str] = None
+    plan_code: str = "EP"
+    billing_mode: str = "Cash"
+    vehicle_no: Optional[str] = None
+    purpose_of_visit: str = "Business Visit"
 
 class BookingResponse(BaseModel):
     id: int
@@ -54,6 +63,15 @@ class BookingResponse(BaseModel):
     balance_amount: float
     corporate_account_id: Optional[int] = None
     key_handed_over: bool
+    grc_number: Optional[str] = None
+    num_pax: int = 1
+    second_pax_name: Optional[str] = None
+    second_pax_phone: Optional[str] = None
+    second_pax_id: Optional[str] = None
+    plan_code: str = "EP"
+    billing_mode: str = "Cash"
+    vehicle_no: Optional[str] = None
+    purpose_of_visit: str = "Business Visit"
     created_at: datetime
 
     class Config:
@@ -1103,15 +1121,22 @@ class TdsTcsRecordResponse(BaseModel):
         from_attributes = True
 
 # Tables & Menu Management
+# Tables & Menu Management
 class TableCreate(BaseModel):
     table_number: str
     capacity: int = 4
     status: str = "available"
+    outlet: str = "RESTAURANT"
+    outlet_code: str = "RES"
+    location_view: str = "AC MAIN HALL"
 
 class TableUpdate(BaseModel):
     table_number: Optional[str] = None
     capacity: Optional[int] = None
     status: Optional[str] = None
+    outlet: Optional[str] = None
+    outlet_code: Optional[str] = None
+    location_view: Optional[str] = None
 
 class MenuItemCreate(BaseModel):
     item_code: str
@@ -1120,6 +1145,11 @@ class MenuItemCreate(BaseModel):
     price: float
     is_veg: bool = True
     description: Optional[str] = None
+    uom: str = "POR"
+    tax_rate: float = 5.0
+    sac_hsn_code: str = "996331"
+    discount_allowed: bool = True
+    portions: Optional[list] = []
 
 class MenuItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -1127,6 +1157,11 @@ class MenuItemUpdate(BaseModel):
     price: Optional[float] = None
     is_veg: Optional[bool] = None
     description: Optional[str] = None
+    uom: Optional[str] = None
+    tax_rate: Optional[float] = None
+    sac_hsn_code: Optional[str] = None
+    discount_allowed: Optional[bool] = None
+    portions: Optional[list] = None
 
 # Railway Transit Slot Schemas
 class TransitSlotCreate(BaseModel):
@@ -1168,20 +1203,122 @@ class SalesPromotionResponse(SalesPromotionCreate):
 
 # Corporate Account Master Schemas
 class CorporateAccountCreate(BaseModel):
+    company_code: Optional[str] = None
     company_name: str
     gst_number: Optional[str] = None
+    pan_number: Optional[str] = None
     contact_person: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    address: Optional[str] = None
+    city: str = "Rayagada"
+    state: str = "Odisha"
+    pin_code: str = "765017"
+    linked_rate_table: str = "100"
+    billing_type: str = "BTC"
     credit_limit: float = 100000.0
 
 class CorporateAccountUpdate(BaseModel):
     company_name: Optional[str] = None
     gst_number: Optional[str] = None
+    pan_number: Optional[str] = None
     contact_person: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    pin_code: Optional[str] = None
+    linked_rate_table: Optional[str] = None
+    billing_type: Optional[str] = None
     credit_limit: Optional[float] = None
+
+# Business Source Schemas (Video 29)
+class BusinessSourceCreate(BaseModel):
+    code: str
+    name: str
+    short_name: str
+    applicable_from: str
+    status: str = "Active"
+    user: str = "MANAGER"
+
+class BusinessSourceResponse(BusinessSourceCreate):
+    id: int
+    last_updated: datetime
+    class Config:
+        from_attributes = True
+
+# Market Segment Schemas (Video 30)
+class MarketSegmentCreate(BaseModel):
+    code: str
+    name: str
+    short_name: str
+    applicable_from: str
+    status: str = "Active"
+    user: str = "MANAGER"
+
+class MarketSegmentResponse(MarketSegmentCreate):
+    id: int
+    last_updated: datetime
+    class Config:
+        from_attributes = True
+
+# Package Rate Schemas (Video 27)
+class PackageRateCreate(BaseModel):
+    code: str
+    name: str
+    tier: str = "executive"
+    total_tariff: float = 2650.0
+    room_tariff: float = 2050.0
+    buffet_breakfast: float = 200.0
+    dinner_buffet: float = 400.0
+    sac_code: str = "996311"
+    tax_rate: float = 12.0
+    status: str = "Active"
+
+class PackageRateResponse(PackageRateCreate):
+    id: int
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+# Laundry Item Rate Master Schemas (Videos 33 & 34)
+class LaundryItemRateCreate(BaseModel):
+    item_code: str
+    item_name: str
+    service_type: str = "Washing"
+    category: str = "Gentleman"
+    standard_charge: float = 80.0
+    express_charge: float = 120.0
+    tax_structure: str = "GST18_LAU"
+    currency: str = "Indian Rupees"
+    status: str = "Active"
+
+class LaundryItemRateResponse(LaundryItemRateCreate):
+    id: int
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+# Guest Complaint Schemas
+class GuestComplaintCreate(BaseModel):
+    complaint_id: Optional[str] = None
+    room_no: str
+    guest_name: str
+    department: str = "Housekeeping"
+    nature_of_complaint: str
+    received_by: str = "MANAGER"
+    status: str = "Pending"
+    attended_by: Optional[str] = None
+    action_taken: Optional[str] = None
+
+class GuestComplaintResponse(GuestComplaintCreate):
+    id: int
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
+    class Config:
+        from_attributes = True
+
 
 
 

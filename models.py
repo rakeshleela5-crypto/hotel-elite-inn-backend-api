@@ -37,6 +37,15 @@ class Booking(Base):
     balance_amount = Column(Float, default=0.0)
     corporate_account_id = Column(Integer, ForeignKey("corporate_accounts.id"), nullable=True)
     key_handed_over = Column(Boolean, default=False)
+    grc_number = Column(String(50), nullable=True, index=True) # Guest Registration Card No (e.g. 501, GRC-102)
+    num_pax = Column(Integer, default=1)
+    second_pax_name = Column(String(100), nullable=True)
+    second_pax_phone = Column(String(30), nullable=True)
+    second_pax_id = Column(String(100), nullable=True)
+    plan_code = Column(String(20), default="EP") # 'EP', 'CP', 'MAP', 'AP'
+    billing_mode = Column(String(50), default="Cash") # 'Cash', 'BTC', 'Credit Card', 'UPI'
+    vehicle_no = Column(String(50), nullable=True)
+    purpose_of_visit = Column(String(100), default="Business Visit")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     room = relationship("Room", back_populates="bookings")
@@ -50,6 +59,9 @@ class RestaurantTable(Base):
     table_number = Column(String(20), unique=True, nullable=False) # T-1, T-2, etc.
     capacity = Column(Integer, default=4)
     status = Column(String(30), default="available") # 'available', 'occupied', 'merged', 'reserved'
+    outlet = Column(String(50), default="RESTAURANT") # 'RESTAURANT', 'LIQUOR BAR', 'OLIVE HALL'
+    outlet_code = Column(String(20), default="RES") # 'RES', 'BAR', 'OLIVE'
+    location_view = Column(String(100), default="AC MAIN HALL") # 'AC MAIN HALL', 'WINDOW SIDE', 'GARDEN VIEW', 'BAR COUNTER'
     merged_into_table_id = Column(Integer, nullable=True) # Merged into another table for single bill
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -71,6 +83,9 @@ class PosOrder(Base):
     payment_status = Column(String(30), default="pending") # 'pending', 'paid', 'billed_to_room', 'billed_to_company'
     payment_method = Column(String(30), nullable=True) # 'Cash', 'UPI', 'Credit Card', 'Direct Billing'
     status = Column(String(30), default="open") # 'open', 'settled', 'cancelled'
+    steward_name = Column(String(100), default="Santosh Biswal") # Captain / Steward
+    cooking_note = Column(Text, nullable=True)
+    is_jain_satvik = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     table = relationship("RestaurantTable", back_populates="orders")
@@ -113,11 +128,19 @@ class CorporateAccount(Base):
     __tablename__ = "corporate_accounts"
 
     id = Column(Integer, primary_key=True, index=True)
+    company_code = Column(String(30), unique=True, nullable=True, index=True) # e.g. "COM0001", "COM0002"
     company_name = Column(String(150), unique=True, nullable=False)
     gst_number = Column(String(50), nullable=True)
+    pan_number = Column(String(30), nullable=True)
     contact_person = Column(String(100), nullable=True)
     contact_phone = Column(String(30), nullable=True)
     contact_email = Column(String(100), nullable=True)
+    address = Column(Text, nullable=True)
+    city = Column(String(100), default="Rayagada")
+    state = Column(String(100), default="Odisha")
+    pin_code = Column(String(20), default="765017")
+    linked_rate_table = Column(String(30), default="100")
+    billing_type = Column(String(30), default="BTC") # 'BTC', 'Direct'
     credit_limit = Column(Float, default=100000.0)
     current_outstanding = Column(Float, default=0.0)
     billing_cycle_days = Column(Integer, default=30)
@@ -164,6 +187,11 @@ class MenuItem(Base):
     price = Column(Float, nullable=False)
     is_veg = Column(Boolean, default=True)
     description = Column(String(255), nullable=True)
+    uom = Column(String(20), default="POR") # 'POR', 'BTL', 'PLT', 'GLS', 'PEG', 'PCS', 'KGS'
+    tax_rate = Column(Float, default=5.0) # 5%, 12%, 18%
+    sac_hsn_code = Column(String(20), default="996331")
+    discount_allowed = Column(Boolean, default=True)
+    portions_json = Column(Text, default="[]") # [{"portionName": "HALF", "rate": 120}]
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -800,4 +828,80 @@ class SalesPromotion(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+# =============================================================
+# Category 9: Business Source, Market Segment & Guest Service Models
+# =============================================================
+class BusinessSource(Base):
+    __tablename__ = "business_sources"
 
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(30), unique=True, index=True, nullable=False) # 'OTA', 'WAL', 'WEB', 'MMT', 'BKG'
+    name = Column(String(150), nullable=False)
+    short_name = Column(String(50), nullable=False)
+    applicable_from = Column(String(30), nullable=False)
+    status = Column(String(30), default="Active")
+    user = Column(String(100), default="MANAGER")
+    last_updated = Column(DateTime, default=datetime.utcnow)
+
+
+class MarketSegment(Base):
+    __tablename__ = "market_segments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(30), unique=True, index=True, nullable=False) # 'CVG', 'FIT', 'GRP', 'GOV', 'AIR'
+    name = Column(String(150), nullable=False)
+    short_name = Column(String(50), nullable=False)
+    applicable_from = Column(String(30), nullable=False)
+    status = Column(String(30), default="Active")
+    user = Column(String(100), default="MANAGER")
+    last_updated = Column(DateTime, default=datetime.utcnow)
+
+
+class PackageRate(Base):
+    __tablename__ = "package_rates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(50), unique=True, index=True, nullable=False) # 'PKG-CORP', 'PKG-TEMPLE'
+    name = Column(String(150), nullable=False)
+    tier = Column(String(50), default="executive") # 'executive', 'deluxe', 'suite'
+    total_tariff = Column(Float, default=2650.0)
+    room_tariff = Column(Float, default=2050.0)
+    buffet_breakfast = Column(Float, default=200.0)
+    dinner_buffet = Column(Float, default=400.0)
+    sac_code = Column(String(20), default="996311")
+    tax_rate = Column(Float, default=12.0)
+    status = Column(String(30), default="Active")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class LaundryItemRate(Base):
+    __tablename__ = "laundry_item_rates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    item_code = Column(String(30), index=True, nullable=False) # '1', '2', etc.
+    item_name = Column(String(100), nullable=False) # 'SHIRT', 'TROUSER', 'SUIT (2 PC)'
+    service_type = Column(String(50), default="Washing") # 'Washing', 'Pressing', 'Dry Cleaning'
+    category = Column(String(50), default="Gentleman") # 'Gentleman', 'Ladies', 'Linen'
+    standard_charge = Column(Float, default=80.0)
+    express_charge = Column(Float, default=120.0)
+    tax_structure = Column(String(50), default="GST18_LAU")
+    currency = Column(String(20), default="Indian Rupees")
+    status = Column(String(30), default="Active")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class GuestComplaint(Base):
+    __tablename__ = "guest_complaints"
+
+    id = Column(Integer, primary_key=True, index=True)
+    complaint_id = Column(String(50), unique=True, index=True, nullable=False) # 'CMP-2026-001'
+    room_no = Column(String(20), index=True, nullable=False)
+    guest_name = Column(String(150), nullable=False)
+    department = Column(String(50), default="Housekeeping") # 'Housekeeping', 'Front Office', 'F&B', 'Maintenance'
+    nature_of_complaint = Column(Text, nullable=False)
+    received_by = Column(String(100), default="MANAGER")
+    status = Column(String(30), default="Pending") # 'Pending', 'In Progress', 'Resolved'
+    attended_by = Column(String(100), nullable=True)
+    action_taken = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)

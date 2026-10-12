@@ -52,27 +52,27 @@ class BookingResponse(BaseModel):
     guest_name: str
     guest_phone: str
     guest_email: Optional[str] = None
-    guest_id_type: str
+    guest_id_type: Optional[str] = "Aadhaar Card"
     guest_id_number: Optional[str] = None
     room_id: int
     check_in_date: datetime
     check_out_date: datetime
-    status: str
-    total_amount: float
-    advance_paid: float
-    balance_amount: float
+    status: Optional[str] = "confirmed"
+    total_amount: Optional[float] = 0.0
+    advance_paid: Optional[float] = 0.0
+    balance_amount: Optional[float] = 0.0
     corporate_account_id: Optional[int] = None
-    key_handed_over: bool
+    key_handed_over: Optional[bool] = False
     grc_number: Optional[str] = None
-    num_pax: int = 1
+    num_pax: Optional[int] = 1
     second_pax_name: Optional[str] = None
     second_pax_phone: Optional[str] = None
     second_pax_id: Optional[str] = None
-    plan_code: str = "EP"
-    billing_mode: str = "Cash"
+    plan_code: Optional[str] = "EP"
+    billing_mode: Optional[str] = "Cash"
     vehicle_no: Optional[str] = None
-    purpose_of_visit: str = "Business Visit"
-    created_at: datetime
+    purpose_of_visit: Optional[str] = "Business Visit"
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

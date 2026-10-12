@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 
 from database import engine, Base, get_db
 from models import (
@@ -195,6 +195,53 @@ class SetHotelIpRequest(BaseModel):
     ip: Optional[str] = None
     enable_restriction: Optional[bool] = True
 
+def auto_migrate_schema():
+    with engine.begin() as conn:
+        stmts = [
+            # Bookings (Missing columns added in later models)
+            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS grc_number VARCHAR(50);",
+            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS num_pax INTEGER DEFAULT 1;",
+            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS second_pax_name VARCHAR(100);",
+            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS second_pax_phone VARCHAR(30);",
+            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS second_pax_id VARCHAR(100);",
+            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS plan_code VARCHAR(20) DEFAULT 'EP';",
+            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS billing_mode VARCHAR(50) DEFAULT 'Cash';",
+            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS vehicle_no VARCHAR(50);",
+            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS purpose_of_visit VARCHAR(100) DEFAULT 'Business Visit';",
+            
+            # Restaurant Tables
+            "ALTER TABLE restaurant_tables ADD COLUMN IF NOT EXISTS outlet VARCHAR(50) DEFAULT 'RESTAURANT';",
+            "ALTER TABLE restaurant_tables ADD COLUMN IF NOT EXISTS outlet_code VARCHAR(20) DEFAULT 'RES';",
+            "ALTER TABLE restaurant_tables ADD COLUMN IF NOT EXISTS location_view VARCHAR(100) DEFAULT 'AC MAIN HALL';",
+            
+            # POS Orders
+            "ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS steward_name VARCHAR(100) DEFAULT 'Santosh Biswal';",
+            "ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS cooking_note TEXT;",
+            "ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS is_jain_satvik BOOLEAN DEFAULT FALSE;",
+            
+            # Corporate Accounts
+            "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS company_code VARCHAR(30);",
+            "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS pan_number VARCHAR(30);",
+            "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS address TEXT;",
+            "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS city VARCHAR(100) DEFAULT 'Rayagada';",
+            "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS state VARCHAR(100) DEFAULT 'Odisha';",
+            "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS pin_code VARCHAR(20) DEFAULT '765017';",
+            "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS linked_rate_table VARCHAR(30) DEFAULT '100';",
+            "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS billing_type VARCHAR(30) DEFAULT 'BTC';",
+            
+            # Menu Items
+            "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS uom VARCHAR(20) DEFAULT 'POR';",
+            "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS tax_rate FLOAT DEFAULT 5.0;",
+            "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS sac_hsn_code VARCHAR(20) DEFAULT '996331';",
+            "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS discount_allowed BOOLEAN DEFAULT TRUE;",
+            "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS portions_json TEXT DEFAULT '[]';"
+        ]
+        for s in stmts:
+            try:
+                conn.execute(text(s))
+            except Exception as ex:
+                print(f"Auto-migration notice: {ex}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Auto-run Alembic schema migrations on startup so PostgreSQL schema stays at head
@@ -208,6 +255,13 @@ async def lifespan(app: FastAPI):
 
     # Auto-create tables & seed default data on startup
     Base.metadata.create_all(bind=engine)
+    
+    # Self-healing column synchronization for existing tables
+    try:
+        auto_migrate_schema()
+    except Exception as e:
+        print(f"Startup auto_migrate_schema note: {e}")
+
     try:
         seed_database()
     except Exception as e:
@@ -463,9 +517,12 @@ def create_booking(booking_in: BookingCreate, db: Session = Depends(get_db)):
     if not room:
         raise HTTPException(status_code=404, detail="Selected room not found")
     
-    nights = max((booking_in.check_out_date - booking_in.check_in_date).days, 1)
+    in_dt = booking_in.check_in_date.replace(tzinfo=None) if booking_in.check_in_date.tzinfo else booking_in.check_in_date
+    out_dt = booking_in.check_out_date.replace(tzinfo=None) if booking_in.check_out_date.tzinfo else booking_in.check_out_date
+    nights = max((out_dt - in_dt).days, 1)
     total_amount = room.base_price * nights * 1.12 # 12% GST
-    balance_amount = max(total_amount - booking_in.advance_paid, 0.0)
+    advance = float(booking_in.advance_paid or 0.0)
+    balance_amount = max(total_amount - advance, 0.0)
 
     booking_ref = f"HEI-{datetime.utcnow().strftime('%y%m%d')}-{room.number}"
 
@@ -474,17 +531,26 @@ def create_booking(booking_in: BookingCreate, db: Session = Depends(get_db)):
         guest_name=booking_in.guest_name,
         guest_phone=booking_in.guest_phone,
         guest_email=booking_in.guest_email,
-        guest_id_type=booking_in.guest_id_type,
+        guest_id_type=booking_in.guest_id_type or "Aadhaar Card",
         guest_id_number=booking_in.guest_id_number,
         room_id=booking_in.room_id,
-        check_in_date=booking_in.check_in_date,
-        check_out_date=booking_in.check_out_date,
+        check_in_date=in_dt,
+        check_out_date=out_dt,
         status="confirmed",
         total_amount=round(total_amount, 2),
-        advance_paid=booking_in.advance_paid,
+        advance_paid=advance,
         balance_amount=round(balance_amount, 2),
         corporate_account_id=booking_in.corporate_account_id,
-        key_handed_over=False
+        key_handed_over=False,
+        grc_number=booking_in.grc_number or f"GRC-{room.number}",
+        num_pax=booking_in.num_pax or 1,
+        second_pax_name=booking_in.second_pax_name,
+        second_pax_phone=booking_in.second_pax_phone,
+        second_pax_id=booking_in.second_pax_id,
+        plan_code=booking_in.plan_code or "EP",
+        billing_mode=booking_in.billing_mode or "Cash",
+        vehicle_no=booking_in.vehicle_no,
+        purpose_of_visit=booking_in.purpose_of_visit or "Business Visit"
     )
     db.add(booking)
     db.commit()

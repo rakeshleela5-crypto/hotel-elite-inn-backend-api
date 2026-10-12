@@ -46,6 +46,16 @@ class Booking(Base):
     billing_mode = Column(String(50), default="Cash") # 'Cash', 'BTC', 'Credit Card', 'UPI'
     vehicle_no = Column(String(50), nullable=True)
     purpose_of_visit = Column(String(100), default="Business Visit")
+    nationality = Column(String(50), default="India")
+    arrival_from = Column(String(100), nullable=True)  # City/place guest arrived from
+    proceeding_to = Column(String(100), nullable=True)  # Next destination
+    identification_no = Column(String(100), nullable=True)  # Passport / ID number
+    company_name = Column(String(150), nullable=True)  # Company name for walk-in guest
+    rate_authorized_by = Column(String(100), default="MANAGER")  # Who authorized the rate
+    special_instructions = Column(Text, nullable=True)  # Commercial remarks / special instructions
+    guest_status = Column(String(20), default="WLK")  # 'WLK' (Walk-In), 'REG' (Regular), 'VIP'
+    rate_amount = Column(Float, default=0.0)  # Negotiated room rate
+    rate_option = Column(String(30), default="DISCOUNT")  # 'DISCOUNT', 'RACK', 'CONTRACT', 'CORPORATE'
     created_at = Column(DateTime, default=datetime.utcnow)
 
     room = relationship("Room", back_populates="bookings")
@@ -183,6 +193,7 @@ class NightAuditLog(Base):
     cash_reconciled = Column(Float, default=0.0)
     corporate_aging_due = Column(Float, default=0.0)
     status = Column(String(30), default="SEALED")
+    rollover_status = Column(String(20), default="PENDING")  # 'PENDING', 'ROLLED_OVER'
     timestamp = Column(DateTime, default=datetime.utcnow)
 
 

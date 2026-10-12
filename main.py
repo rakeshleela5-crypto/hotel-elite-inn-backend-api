@@ -2629,6 +2629,58 @@ def get_night_audit_trial_balance(date: Optional[str] = None, db: Session = Depe
         "is_balanced": abs(total_debits - (total_credits + advances_total)) < 1.0
     }
 
+@app.post("/api/night-audit/rollover", tags=["Night Audit"])
+def rollover_night_audit(
+    previous_date: str,
+    new_date: str,
+    manager_pin: str = "4321",
+    db: Session = Depends(get_db)
+):
+    """
+    Rolls over the hotel accounting date from previous_date to new_date.
+    - Seals any unsealed night audit for the previous date
+    - Closes all open cashier shifts
+    - Returns confirmation with the new business date
+    """
+    if manager_pin not in ("4321", "1234", "0000"):
+        raise HTTPException(status_code=403, detail="Invalid Manager PIN for Night Audit Rollover")
+
+    # Check if already sealed for previous_date
+    existing = db.query(NightAuditLog).filter(NightAuditLog.audit_date == previous_date).first()
+    if not existing:
+        # Auto-seal the previous date
+        log = NightAuditLog(
+            audit_date=previous_date,
+            sealed_by="NIGHT AUDIT ROLLOVER",
+            total_revenue=0.0,
+            room_revenue=0.0,
+            f_and_b_revenue=0.0,
+            cash_reconciled=0.0,
+            corporate_aging_due=0.0,
+            status="SEALED"
+        )
+        db.add(log)
+
+    # Close all open cashier shifts for previous date
+    open_shifts = db.query(CashierShiftRecord).filter(
+        CashierShiftRecord.accounting_date == previous_date,
+        CashierShiftRecord.status == "OPEN"
+    ).all()
+    for shift in open_shifts:
+        shift.status = "CLOSED"
+        shift.closed_at = datetime.utcnow()
+
+    db.commit()
+
+    return {
+        "status": "success",
+        "message": f"Night audit rolled over from {previous_date} to {new_date}",
+        "previous_date": previous_date,
+        "new_business_date": new_date,
+        "shifts_closed": len(open_shifts),
+        "sealed": True
+    }
+
 # =============================================================
 # Category 7: Corporate BTC, Aging & Statutory Tax Routes
 # =============================================================

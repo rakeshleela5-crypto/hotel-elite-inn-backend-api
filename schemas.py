@@ -45,6 +45,16 @@ class BookingCreate(BaseModel):
     billing_mode: str = "Cash"
     vehicle_no: Optional[str] = None
     purpose_of_visit: str = "Business Visit"
+    nationality: str = "India"
+    arrival_from: Optional[str] = None
+    proceeding_to: Optional[str] = None
+    identification_no: Optional[str] = None
+    company_name: Optional[str] = None
+    rate_authorized_by: str = "MANAGER"
+    special_instructions: Optional[str] = None
+    guest_status: str = "WLK"
+    rate_amount: float = 0.0
+    rate_option: str = "DISCOUNT"
 
 class BookingResponse(BaseModel):
     id: int
@@ -72,6 +82,16 @@ class BookingResponse(BaseModel):
     billing_mode: Optional[str] = "Cash"
     vehicle_no: Optional[str] = None
     purpose_of_visit: Optional[str] = "Business Visit"
+    nationality: Optional[str] = "India"
+    arrival_from: Optional[str] = None
+    proceeding_to: Optional[str] = None
+    identification_no: Optional[str] = None
+    company_name: Optional[str] = None
+    rate_authorized_by: Optional[str] = "MANAGER"
+    special_instructions: Optional[str] = None
+    guest_status: Optional[str] = "WLK"
+    rate_amount: Optional[float] = 0.0
+    rate_option: Optional[str] = "DISCOUNT"
     created_at: Optional[datetime] = None
 
     class Config:

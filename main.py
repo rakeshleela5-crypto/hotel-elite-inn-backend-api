@@ -196,51 +196,54 @@ class SetHotelIpRequest(BaseModel):
     enable_restriction: Optional[bool] = True
 
 def auto_migrate_schema():
-    with engine.begin() as conn:
-        stmts = [
-            # Bookings (Missing columns added in later models)
-            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS grc_number VARCHAR(50);",
-            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS num_pax INTEGER DEFAULT 1;",
-            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS second_pax_name VARCHAR(100);",
-            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS second_pax_phone VARCHAR(30);",
-            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS second_pax_id VARCHAR(100);",
-            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS plan_code VARCHAR(20) DEFAULT 'EP';",
-            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS billing_mode VARCHAR(50) DEFAULT 'Cash';",
-            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS vehicle_no VARCHAR(50);",
-            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS purpose_of_visit VARCHAR(100) DEFAULT 'Business Visit';",
-            
-            # Restaurant Tables
-            "ALTER TABLE restaurant_tables ADD COLUMN IF NOT EXISTS outlet VARCHAR(50) DEFAULT 'RESTAURANT';",
-            "ALTER TABLE restaurant_tables ADD COLUMN IF NOT EXISTS outlet_code VARCHAR(20) DEFAULT 'RES';",
-            "ALTER TABLE restaurant_tables ADD COLUMN IF NOT EXISTS location_view VARCHAR(100) DEFAULT 'AC MAIN HALL';",
-            
-            # POS Orders
-            "ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS steward_name VARCHAR(100) DEFAULT 'Santosh Biswal';",
-            "ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS cooking_note TEXT;",
-            "ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS is_jain_satvik BOOLEAN DEFAULT FALSE;",
-            
-            # Corporate Accounts
-            "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS company_code VARCHAR(30);",
-            "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS pan_number VARCHAR(30);",
-            "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS address TEXT;",
-            "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS city VARCHAR(100) DEFAULT 'Rayagada';",
-            "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS state VARCHAR(100) DEFAULT 'Odisha';",
-            "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS pin_code VARCHAR(20) DEFAULT '765017';",
-            "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS linked_rate_table VARCHAR(30) DEFAULT '100';",
-            "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS billing_type VARCHAR(30) DEFAULT 'BTC';",
-            
-            # Menu Items
-            "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS uom VARCHAR(20) DEFAULT 'POR';",
-            "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS tax_rate FLOAT DEFAULT 5.0;",
-            "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS sac_hsn_code VARCHAR(20) DEFAULT '996331';",
-            "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS discount_allowed BOOLEAN DEFAULT TRUE;",
-            "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS portions_json TEXT DEFAULT '[]';"
-        ]
-        for s in stmts:
-            try:
-                conn.execute(text(s))
-            except Exception as ex:
-                print(f"Auto-migration notice: {ex}")
+    try:
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            stmts = [
+                # Bookings (Missing columns added in later models)
+                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS grc_number VARCHAR(50);",
+                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS num_pax INTEGER DEFAULT 1;",
+                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS second_pax_name VARCHAR(100);",
+                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS second_pax_phone VARCHAR(30);",
+                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS second_pax_id VARCHAR(100);",
+                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS plan_code VARCHAR(20) DEFAULT 'EP';",
+                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS billing_mode VARCHAR(50) DEFAULT 'Cash';",
+                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS vehicle_no VARCHAR(50);",
+                "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS purpose_of_visit VARCHAR(100) DEFAULT 'Business Visit';",
+                
+                # Restaurant Tables
+                "ALTER TABLE restaurant_tables ADD COLUMN IF NOT EXISTS outlet VARCHAR(50) DEFAULT 'RESTAURANT';",
+                "ALTER TABLE restaurant_tables ADD COLUMN IF NOT EXISTS outlet_code VARCHAR(20) DEFAULT 'RES';",
+                "ALTER TABLE restaurant_tables ADD COLUMN IF NOT EXISTS location_view VARCHAR(100) DEFAULT 'AC MAIN HALL';",
+                
+                # POS Orders
+                "ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS steward_name VARCHAR(100) DEFAULT 'Santosh Biswal';",
+                "ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS cooking_note TEXT;",
+                "ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS is_jain_satvik BOOLEAN DEFAULT FALSE;",
+                
+                # Corporate Accounts
+                "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS company_code VARCHAR(30);",
+                "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS pan_number VARCHAR(30);",
+                "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS address TEXT;",
+                "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS city VARCHAR(100) DEFAULT 'Rayagada';",
+                "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS state VARCHAR(100) DEFAULT 'Odisha';",
+                "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS pin_code VARCHAR(20) DEFAULT '765017';",
+                "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS linked_rate_table VARCHAR(30) DEFAULT '100';",
+                "ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS billing_type VARCHAR(30) DEFAULT 'BTC';",
+                
+                # Menu Items
+                "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS uom VARCHAR(20) DEFAULT 'POR';",
+                "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS tax_rate FLOAT DEFAULT 5.0;",
+                "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS sac_hsn_code VARCHAR(20) DEFAULT '996331';",
+                "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS discount_allowed BOOLEAN DEFAULT TRUE;",
+                "ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS portions_json TEXT DEFAULT '[]';"
+            ]
+            for s in stmts:
+                try:
+                    conn.execute(text(s))
+                except Exception as ex:
+                    print(f"Auto-migration notice: {ex}")
+    except Exception as e:
+        print(f"Auto-migration connection notice: {e}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -274,6 +277,14 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": str(exc), "traceback": traceback.format_exc()}
+    )
 
 # Robust CORS middleware configured for Cloudflare Pages and local development
 app.add_middleware(
@@ -506,10 +517,14 @@ def update_room_status(room_id: int, payload: RoomStatusUpdate, db: Session = De
 # -------------------------------------------------------------
 @app.get("/api/bookings", response_model=List[BookingResponse], tags=["Front Desk"])
 def list_bookings(status_filter: Optional[str] = None, db: Session = Depends(get_db)):
-    query = db.query(Booking)
-    if status_filter:
-        query = query.filter(Booking.status == status_filter)
-    return query.order_by(Booking.check_in_date.desc()).all()
+    try:
+        query = db.query(Booking)
+        if status_filter:
+            query = query.filter(Booking.status == status_filter)
+        return query.order_by(Booking.check_in_date.desc()).all()
+    except Exception as e:
+        print(f"Error querying bookings: {e}")
+        return []
 
 @app.post("/api/bookings", response_model=BookingResponse, status_code=status.HTTP_201_CREATED, tags=["Front Desk"])
 def create_booking(booking_in: BookingCreate, db: Session = Depends(get_db)):

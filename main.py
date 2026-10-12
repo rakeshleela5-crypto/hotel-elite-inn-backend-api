@@ -336,8 +336,15 @@ async def hotel_wifi_ip_restriction_middleware(request: Request, call_next):
                 }
             )
 
-    response = await call_next(request)
-    return response
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as exc:
+        import traceback
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": str(exc), "traceback": traceback.format_exc()}
+        )
 
 # -------------------------------------------------------------
 # Authentication & Security Endpoints

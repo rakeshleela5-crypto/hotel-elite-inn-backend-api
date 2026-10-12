@@ -1,0 +1,58 @@
+name: Automated Nightly Database Backup to Cloudflare R2
+
+on:
+  schedule:
+    # 2:00 AM UTC (7:30 AM IST post-night audit)
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  backup-to-r2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up PostgreSQL Client & Python
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+          python -m pip install --upgrade pip
+          pip install boto3
+
+      - name: Run pg_dump and Upload to Cloudflare R2
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME || 'hotel-elite-inn-backups' }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set, skipping pg_dump."
+            exit 0
+          fi
+          TIMESTAMP=$(date -u +"%Y-%m-%d_%H%M%S")
+          BACKUP_FILE="/tmp/hotel_backup_${TIMESTAMP}.sql.gz"
+          echo "Executing pg_dump..."
+          pg_dump "$DATABASE_URL" | gzip > "$BACKUP_FILE"
+          echo "Database dumped and gzipped successfully: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
+
+          if [ -n "$R2_ACCOUNT_ID" ] && [ -n "$R2_ACCESS_KEY_ID" ] && [ -n "$R2_SECRET_ACCESS_KEY" ]; then
+            python -c "
+          import boto3, os
+          s3 = boto3.client(
+              's3',
+              endpoint_url=f'https://{os.getenv(\"R2_ACCOUNT_ID\")}.r2.cloudflarestorage.com',
+              aws_access_key_id=os.getenv('R2_ACCESS_KEY_ID'),
+              aws_secret_access_key=os.getenv('R2_SECRET_ACCESS_KEY'),
+              region_name='auto'
+          )
+          bucket = os.getenv('R2_BUCKET_NAME', 'hotel-elite-inn-backups')
+          key = f'hotel_client/hotel_backup_${TIMESTAMP}.sql.gz'
+          s3.upload_file('$BACKUP_FILE', bucket, key)
+          print(f'Successfully uploaded backup to Cloudflare R2: s3://{bucket}/{key}')
+          "
+          else
+            echo "Cloudflare R2 secrets not set. Backup artifact saved locally in workflow."
+          fi

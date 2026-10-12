@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -51,6 +51,11 @@ class Booking(Base):
     room = relationship("Room", back_populates="bookings")
     corporate_account = relationship("CorporateAccount", back_populates="bookings")
 
+    __table_args__ = (
+        Index('idx_hotel_bookings_date', 'check_in_date', 'check_out_date'),
+        Index('idx_hotel_bookings_status_date', 'status', 'check_in_date'),
+    )
+
 
 class RestaurantTable(Base):
     __tablename__ = "restaurant_tables"
@@ -90,6 +95,10 @@ class PosOrder(Base):
 
     table = relationship("RestaurantTable", back_populates="orders")
     items = relationship("PosOrderItem", back_populates="order", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index('idx_pos_orders_date_status', 'created_at', 'status'),
+    )
 
 
 class PosOrderItem(Base):
@@ -407,6 +416,8 @@ class HotelSaleRecord(Base):
 
     __table_args__ = (
         UniqueConstraint('bill_no', 'month', name='uq_hotel_bill_month'),
+        Index('idx_hotel_sales_date_room', 'date', 'room_number'),
+        Index('idx_hotel_sales_month_serial', 'month', 'serial_no'),
     )
 
 
@@ -436,6 +447,8 @@ class RestaurantSaleRecord(Base):
 
     __table_args__ = (
         UniqueConstraint('bill_no', 'month', name='uq_restaurant_bill_month'),
+        Index('idx_restaurant_sales_date_bill', 'date', 'bill_no'),
+        Index('idx_restaurant_sales_month_running', 'month', 'running_no'),
     )
 
 

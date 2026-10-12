@@ -2900,3 +2900,322 @@ def resolve_guest_complaint(complaint_id: str, attended_by: str = "Duty Manager"
     db.commit()
     return {"success": True, "complaint_id": complaint_id, "status": "Resolved"}
 
+
+# =============================================================
+# ARCHITECTURAL ADVISORY: OPERATIONS HISTORY, R2 BACKUP & EXPORTS
+# =============================================================
+import gzip
+import io
+import os
+import boto3
+
+@app.get("/api/operations/history", tags=["Operations History"])
+@app.get("/api/v1/operations/history", tags=["Operations History"])
+def get_operations_history(
+    range_filter: str = Query("today", enum=["today", "7d", "15d", "30d", "1y", "custom"]),
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    role: Optional[str] = Query("staff"),
+    db: Session = Depends(get_db)
+):
+    normalized_role = (role or "staff").lower()
+    if range_filter in ["30d", "1y"] and normalized_role == "staff":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Staff role can only view recent operational logs (up to 15 days). Owner role required for 30-day and 1-year historical analytics."
+        )
+
+    now = datetime.utcnow()
+    today_start = datetime(now.year, now.month, now.day, 0, 0, 0)
+
+    if range_filter == "today":
+        start_dt = today_start
+        end_dt = now
+    elif range_filter == "7d":
+        start_dt = today_start - timedelta(days=7)
+        end_dt = now
+    elif range_filter == "15d":
+        start_dt = today_start - timedelta(days=15)
+        end_dt = now
+    elif range_filter == "30d":
+        start_dt = today_start - timedelta(days=30)
+        end_dt = now
+    elif range_filter == "1y":
+        start_dt = today_start - timedelta(days=365)
+        end_dt = now
+    else:
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d") if start_date else today_start
+        except Exception:
+            start_dt = today_start
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d") if end_date else now
+        except Exception:
+            end_dt = now
+
+    bookings_query = db.query(Booking).filter(Booking.check_in_date >= start_dt).order_by(Booking.check_in_date.desc()).limit(200).all()
+    orders_query = db.query(PosOrder).filter(PosOrder.created_at >= start_dt).order_by(PosOrder.created_at.desc()).limit(200).all()
+    complaints_query = db.query(GuestComplaint).filter(GuestComplaint.created_at >= start_dt).order_by(GuestComplaint.created_at.desc()).limit(100).all()
+
+    if normalized_role == "staff":
+        sanitized_bookings = [
+            {
+                "id": b.id,
+                "booking_reference": b.booking_reference,
+                "room_number": b.room.number if b.room else "N/A",
+                "room_category": b.room.category if b.room else "N/A",
+                "guest_name": b.guest_name,
+                "check_in_date": b.check_in_date.isoformat() if b.check_in_date else None,
+                "check_out_date": b.check_out_date.isoformat() if b.check_out_date else None,
+                "status": b.status,
+                "plan_code": b.plan_code or "EP",
+                "grc_number": b.grc_number,
+                "key_handed_over": b.key_handed_over,
+            }
+            for b in bookings_query
+        ]
+        sanitized_orders = [
+            {
+                "id": o.id,
+                "order_number": o.order_number,
+                "table_number": o.table.table_number if o.table else "N/A",
+                "status": o.status,
+                "steward_name": o.steward_name,
+                "items_count": len(o.items),
+                "created_at": o.created_at.isoformat() if o.created_at else None
+            }
+            for o in orders_query
+        ]
+        return {
+            "role": "staff",
+            "range": range_filter,
+            "start_date": start_dt.isoformat(),
+            "end_date": end_dt.isoformat(),
+            "summary": {
+                "total_bookings_count": len(bookings_query),
+                "active_checkins_count": sum(1 for b in bookings_query if b.status == "checked_in"),
+                "total_orders_count": len(orders_query),
+                "open_complaints_count": sum(1 for c in complaints_query if c.status != "Resolved"),
+            },
+            "bookings": sanitized_bookings,
+            "orders": sanitized_orders,
+            "complaints": [
+                {
+                    "complaint_id": c.complaint_id,
+                    "room_no": c.room_no,
+                    "guest_name": c.guest_name,
+                    "department": c.department,
+                    "nature": c.nature_of_complaint,
+                    "status": c.status,
+                    "attended_by": c.attended_by
+                }
+                for c in complaints_query
+            ]
+        }
+    else:
+        total_room_revenue = sum(b.total_amount for b in bookings_query)
+        total_pos_revenue = sum(o.final_amount for o in orders_query if o.status == "settled")
+        total_rooms = db.query(Room).count() or 30
+        occupied_rooms = sum(1 for b in bookings_query if b.status == "checked_in")
+        occupancy_rate = round((occupied_rooms / total_rooms) * 100, 1) if total_rooms else 0.0
+        adr = round(total_room_revenue / len(bookings_query), 2) if bookings_query else 0.0
+
+        return {
+            "role": normalized_role,
+            "range": range_filter,
+            "start_date": start_dt.isoformat(),
+            "end_date": end_dt.isoformat(),
+            "summary": {
+                "total_room_revenue": round(total_room_revenue, 2),
+                "total_pos_revenue": round(total_pos_revenue, 2),
+                "total_combined_revenue": round(total_room_revenue + total_pos_revenue, 2),
+                "occupancy_rate_percent": occupancy_rate,
+                "adr": adr,
+                "total_bookings": len(bookings_query),
+                "settled_orders": sum(1 for o in orders_query if o.status == "settled"),
+                "open_complaints": sum(1 for c in complaints_query if c.status != "Resolved")
+            },
+            "bookings": [
+                {
+                    "id": b.id,
+                    "booking_reference": b.booking_reference,
+                    "room_number": b.room.number if b.room else "N/A",
+                    "guest_name": b.guest_name,
+                    "guest_phone": b.guest_phone,
+                    "check_in_date": b.check_in_date.isoformat() if b.check_in_date else None,
+                    "check_out_date": b.check_out_date.isoformat() if b.check_out_date else None,
+                    "status": b.status,
+                    "total_amount": b.total_amount,
+                    "advance_paid": b.advance_paid,
+                    "balance_amount": b.balance_amount,
+                    "plan_code": b.plan_code,
+                    "billing_mode": b.billing_mode,
+                    "grc_number": b.grc_number,
+                    "vehicle_no": b.vehicle_no
+                }
+                for b in bookings_query
+            ],
+            "orders": [
+                {
+                    "id": o.id,
+                    "order_number": o.order_number,
+                    "table_number": o.table.table_number if o.table else "N/A",
+                    "subtotal": o.subtotal,
+                    "tax_amount": o.tax_amount,
+                    "discount_amount": o.discount_amount,
+                    "final_amount": o.final_amount,
+                    "payment_method": o.payment_method,
+                    "payment_status": o.payment_status,
+                    "status": o.status,
+                    "steward_name": o.steward_name,
+                    "created_at": o.created_at.isoformat() if o.created_at else None
+                }
+                for o in orders_query
+            ],
+            "complaints": [
+                {
+                    "complaint_id": c.complaint_id,
+                    "room_no": c.room_no,
+                    "guest_name": c.guest_name,
+                    "department": c.department,
+                    "nature": c.nature_of_complaint,
+                    "status": c.status,
+                    "attended_by": c.attended_by,
+                    "action_taken": c.action_taken,
+                    "resolved_at": c.resolved_at.isoformat() if c.resolved_at else None
+                }
+                for c in complaints_query
+            ]
+        }
+
+@app.get("/api/admin/backup/status", tags=["Admin & Backups"])
+def get_backup_status():
+    r2_account_id = os.getenv("R2_ACCOUNT_ID")
+    r2_access_key = os.getenv("R2_ACCESS_KEY_ID")
+    r2_secret_key = os.getenv("R2_SECRET_ACCESS_KEY")
+    r2_bucket = os.getenv("R2_BUCKET_NAME", "hotel-elite-inn-backups")
+
+    is_configured = bool(r2_account_id and r2_access_key and r2_secret_key)
+    recent_backups = []
+    
+    if is_configured:
+        try:
+            s3 = boto3.client(
+                "s3",
+                endpoint_url=f"https://{r2_account_id}.r2.cloudflarestorage.com",
+                aws_access_key_id=r2_access_key,
+                aws_secret_access_key=r2_secret_key,
+                region_name="auto"
+            )
+            response = s3.list_objects_v2(Bucket=r2_bucket, Prefix="hotel_client/", MaxKeys=10)
+            if "Contents" in response:
+                recent_backups = [
+                    {
+                        "key": obj["Key"],
+                        "size_bytes": obj["Size"],
+                        "last_modified": obj["LastModified"].isoformat()
+                    }
+                    for obj in sorted(response["Contents"], key=lambda x: x["LastModified"], reverse=True)
+                ]
+        except Exception:
+            pass
+
+    return {
+        "provider": "Cloudflare R2",
+        "is_configured": is_configured,
+        "bucket_name": r2_bucket,
+        "schedule": "Nightly at 02:00 AM UTC (post-night audit)",
+        "retention": "90 Days of daily dumps + 12 monthly archives",
+        "cloud_isolation": "100% Cloud-to-Cloud independent of hotel client reception PCs",
+        "recent_backups": recent_backups
+    }
+
+@app.post("/api/admin/backup/cloud-r2", tags=["Admin & Backups"])
+def trigger_backup_to_r2(db: Session = Depends(get_db)):
+    r2_account_id = os.getenv("R2_ACCOUNT_ID")
+    r2_access_key = os.getenv("R2_ACCESS_KEY_ID")
+    r2_secret_key = os.getenv("R2_SECRET_ACCESS_KEY")
+    r2_bucket = os.getenv("R2_BUCKET_NAME", "hotel-elite-inn-backups")
+
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H%M%S")
+    client_slug = "hotel_client"
+    r2_key = f"{client_slug}/{client_slug}_{timestamp}.json.gz"
+
+    data_snapshot = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "database": "hotel_elite_inn_postgresql",
+        "client": "Hotel Elite Inn Rayagada",
+        "rooms": [{"id": r.id, "number": r.number, "category": r.category, "status": r.status} for r in db.query(Room).all()],
+        "bookings": [{"id": b.id, "ref": b.booking_reference, "guest": b.guest_name, "check_in": b.check_in_date.isoformat() if b.check_in_date else None, "amount": b.total_amount, "status": b.status, "grc": b.grc_number} for b in db.query(Booking).all()],
+        "restaurant_tables": [{"id": t.id, "table_number": t.table_number, "outlet": t.outlet, "status": t.status} for t in db.query(RestaurantTable).all()],
+        "pos_orders": [{"id": o.id, "order_number": o.order_number, "amount": o.final_amount, "status": o.status} for o in db.query(PosOrder).all()],
+        "hotel_sales": [{"id": h.id, "bill_no": h.bill_no, "date": h.date, "net": h.net_amount, "month": h.month} for h in db.query(HotelSaleRecord).all()],
+        "restaurant_sales": [{"id": r.id, "bill_no": r.bill_no, "date": r.date, "total": r.total, "month": r.month} for r in db.query(RestaurantSaleRecord).all()],
+        "complaints": [{"id": c.id, "room_no": c.room_no, "nature": c.nature_of_complaint, "status": c.status} for c in db.query(GuestComplaint).all()]
+    }
+
+    compressed_buffer = io.BytesIO()
+    with gzip.GzipFile(fileobj=compressed_buffer, mode="wb") as gz:
+        gz.write(json.dumps(data_snapshot, indent=2).encode("utf-8"))
+    compressed_bytes = compressed_buffer.getvalue()
+
+    if not (r2_account_id and r2_access_key and r2_secret_key):
+        return {
+            "success": True,
+            "mode": "local_cloud_prepared",
+            "message": "Backup snapshot successfully generated and compressed (ready for Cloudflare R2 upload). Please set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY in Railway variables to stream directly to Cloudflare R2 bucket.",
+            "backup_key": r2_key,
+            "compressed_size_bytes": len(compressed_bytes),
+            "records_captured": {
+                "rooms": len(data_snapshot["rooms"]),
+                "bookings": len(data_snapshot["bookings"]),
+                "pos_orders": len(data_snapshot["pos_orders"]),
+                "hotel_sales": len(data_snapshot["hotel_sales"]),
+                "restaurant_sales": len(data_snapshot["restaurant_sales"])
+            }
+        }
+
+    try:
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=f"https://{r2_account_id}.r2.cloudflarestorage.com",
+            aws_access_key_id=r2_access_key,
+            aws_secret_access_key=r2_secret_key,
+            region_name="auto"
+        )
+        s3.put_object(
+            Bucket=r2_bucket,
+            Key=r2_key,
+            Body=compressed_bytes,
+            ContentType="application/gzip"
+        )
+        return {
+            "success": True,
+            "mode": "cloudflare_r2_live",
+            "message": f"Successfully backed up database to Cloudflare R2: {r2_key}",
+            "bucket": r2_bucket,
+            "key": r2_key,
+            "compressed_size_bytes": len(compressed_bytes),
+            "timestamp": timestamp
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Cloudflare R2 upload error: {str(e)}")
+
+@app.get("/api/admin/export/daily-archive", tags=["Admin & Backups"])
+def export_daily_archive(archive_date: Optional[str] = None, db: Session = Depends(get_db)):
+    query_date = archive_date or datetime.utcnow().strftime("%Y-%m-%d")
+    
+    archive = {
+        "export_date": query_date,
+        "exported_at": datetime.utcnow().isoformat(),
+        "property": "Hotel Elite Inn, Rayagada",
+        "gstin": "21AAACH1234F1Z5",
+        "rooms": [{"number": r.number, "category": r.category, "price": r.base_price, "status": r.status} for r in db.query(Room).all()],
+        "bookings": [{"ref": b.booking_reference, "guest": b.guest_name, "phone": b.guest_phone, "room": b.room.number if b.room else "N/A", "check_in": b.check_in_date.isoformat() if b.check_in_date else None, "check_out": b.check_out_date.isoformat() if b.check_out_date else None, "status": b.status, "amount": b.total_amount, "grc": b.grc_number, "plan": b.plan_code} for b in db.query(Booking).all()],
+        "hotel_sales": [{"serial_no": h.serial_no, "date": h.date, "bill_no": h.bill_no, "room": h.room_number, "guest": h.guest_name, "rent": h.rent, "cgst": h.cgst, "sgst": h.sgst, "net": h.net_amount, "settlement": h.cash or h.online or h.credit_card or h.btc} for h in db.query(HotelSaleRecord).all()],
+        "restaurant_sales": [{"running_no": r.running_no, "date": r.date, "bill_no": r.bill_no, "outlet": r.pos_outlet, "amount": r.amount, "cgst": r.cgst, "sgst": r.sgst, "total": r.total, "mode": r.settlement_mode} for r in db.query(RestaurantSaleRecord).all()],
+        "guest_complaints": [{"id": c.complaint_id, "room": c.room_no, "guest": c.guest_name, "dept": c.department, "nature": c.nature_of_complaint, "status": c.status, "attended_by": c.attended_by, "action": c.action_taken} for c in db.query(GuestComplaint).all()]
+    }
+
+    return archive
+

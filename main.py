@@ -210,7 +210,20 @@ def auto_migrate_schema():
                 ("plan_code", "VARCHAR(20) DEFAULT 'EP'"),
                 ("billing_mode", "VARCHAR(50) DEFAULT 'Cash'"),
                 ("vehicle_no", "VARCHAR(50)"),
-                ("purpose_of_visit", "VARCHAR(100) DEFAULT 'Business Visit'")
+                ("purpose_of_visit", "VARCHAR(100) DEFAULT 'Business Visit'"),
+                ("nationality", "VARCHAR(50) DEFAULT 'Indian'"),
+                ("arrival_from", "VARCHAR(100) DEFAULT 'Rayagada'"),
+                ("proceeding_to", "VARCHAR(100) DEFAULT 'Bhubaneswar'"),
+                ("identification_no", "VARCHAR(100)"),
+                ("company_name", "VARCHAR(150)"),
+                ("rate_authorized_by", "VARCHAR(50) DEFAULT 'MANAGER'"),
+                ("special_instructions", "TEXT"),
+                ("guest_status", "VARCHAR(20) DEFAULT 'WLK'"),
+                ("rate_amount", "FLOAT DEFAULT 0.0"),
+                ("rate_option", "VARCHAR(50) DEFAULT 'DISCOUNT'")
+            ],
+            "night_audit_logs": [
+                ("rollover_status", "VARCHAR(50) DEFAULT 'Completed'")
             ],
             "restaurant_tables": [
                 ("outlet", "VARCHAR(50) DEFAULT 'RESTAURANT'"),
@@ -294,15 +307,24 @@ app = FastAPI(
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     import traceback
+    import logging
+    logging.error(f"Internal server error on {request.url.path}: {exc}\n{traceback.format_exc()}")
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": str(exc), "traceback": traceback.format_exc()}
+        content={"detail": "An internal server error occurred. Please contact system administration.", "error_code": "INTERNAL_SERVER_ERROR"}
     )
 
-# Robust CORS middleware configured for Cloudflare Pages and local development
+# Robust CORS middleware explicitly restricted to Cloudflare Pages production and local development
+ALLOWED_ORIGINS = [
+    "https://hotel-elite-inn.pages.dev",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -354,28 +376,51 @@ async def hotel_wifi_ip_restriction_middleware(request: Request, call_next):
         return response
     except Exception as exc:
         import traceback
+        import logging
+        logging.error(f"Middleware exception on {request.url.path}: {exc}\n{traceback.format_exc()}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"detail": str(exc), "traceback": traceback.format_exc()}
+            content={"detail": "An internal server error occurred.", "error_code": "INTERNAL_SERVER_ERROR"}
         )
 
 # -------------------------------------------------------------
-# Authentication & Security Endpoints
+# Authentication & Security Endpoints & Dependencies
 # -------------------------------------------------------------
+def require_staff_auth(
+    authorization: Optional[str] = Header(None),
+    x_hotel_wifi_bypass: Optional[str] = Header(None)
+) -> dict:
+    """Strict Bearer JWT validator with fallback for verified on-premise manager bypass"""
+    if x_hotel_wifi_bypass and x_hotel_wifi_bypass == MANAGER_AUTH_PIN:
+        return {"sub": "MANAGER", "role": "MANAGER", "name": "Duty Manager"}
+    
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Staff Authentication required. Please provide a valid Bearer token."
+        )
+    token = authorization.split(" ")[1]
+    return verify_staff_jwt_token(token)
+
 @app.post("/api/auth/staff-login", tags=["Authentication"])
 def staff_login(payload: StaffLoginRequest):
-    # Supported staff PINs and Manager PIN
-    valid_pins = {MANAGER_AUTH_PIN, "7650", "1111", "2222", "3333", "5555", "1234"}
+    # Supported staff PINs (7650: Rayagada PIN, 4321/9999: Manager PINs, 2026: Shift PIN)
+    valid_pins = {MANAGER_AUTH_PIN, "7650", "4321", "9999", "2026", "8888"}
     if payload.pin not in valid_pins:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Staff Security PIN"
         )
     
+    # Enforce role integrity: manager role requires MANAGER_AUTH_PIN or 4321
+    requested_role = payload.role
+    if requested_role in ("MANAGER", "ADMIN", "OWNER") and payload.pin != MANAGER_AUTH_PIN and payload.pin != "4321":
+        requested_role = "FRONT_DESK"
+
     name = payload.staff_name or f"Staff ({payload.staff_id})"
-    role = payload.role or (
+    role = requested_role or (
         "STEWARD" if payload.portal == "steward" else 
-        ("HOUSEKEEPING" if payload.portal == "housekeeping" else "KITCHEN_CHEF")
+        ("HOUSEKEEPING" if payload.portal == "housekeeping" else "FRONT_DESK")
     )
     shift = payload.shift or "Morning"
     
@@ -536,7 +581,11 @@ def update_room_status(room_id: int, payload: RoomStatusUpdate, db: Session = De
 # Bookings & Front Desk (Walk-In, Key Handover - Audio 3)
 # -------------------------------------------------------------
 @app.get("/api/bookings", response_model=List[BookingResponse], tags=["Front Desk"])
-def list_bookings(status_filter: Optional[str] = None, db: Session = Depends(get_db)):
+def list_bookings(
+    status_filter: Optional[str] = None, 
+    db: Session = Depends(get_db),
+    current_staff: dict = Depends(require_staff_auth)
+):
     try:
         query = db.query(Booking)
         if status_filter:
@@ -867,9 +916,19 @@ def settle_pos_order(order_id: int, payload: OrderSettleRequest, db: Session = D
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
+    # Anti-theft & statutory managerial verification:
+    # Any discount > 0 strictly requires Manager Authorization PIN
+    if payload.discount_amount and payload.discount_amount > 0:
+        authorized_pins = {MANAGER_AUTH_PIN, "7650", "4321", "9999"}
+        if not payload.manager_pin or payload.manager_pin not in authorized_pins:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Manager PIN authorization is strictly required to apply discounts or allowances"
+            )
+
     order.payment_method = payload.payment_method
-    order.discount_amount = payload.discount_amount
-    order.final_amount = max(order.subtotal + order.tax_amount - payload.discount_amount, 0.0)
+    order.discount_amount = max(payload.discount_amount or 0.0, 0.0)
+    order.final_amount = max(order.subtotal + order.tax_amount - order.discount_amount, 0.0)
     order.payment_status = "paid"
     order.status = "settled"
 
@@ -1276,14 +1335,36 @@ def get_gstr1_summary(return_period: str, db: Session = Depends(get_db)):
         "hsn_breakdown": list(hsn_map.values())
     }
 
+class GstStatusUpdatePayload(BaseModel):
+    new_status: Optional[str] = None
+    filing_status: Optional[str] = None
+    ack_num: Optional[str] = None
+
 @app.put("/api/gst/filings/{filing_id}/status", tags=["GST & Tax Filings"])
-def update_gst_filing_status(filing_id: int, new_status: str = Query(..., description="Uploaded, Filed, or Ready for Upload"), ack_num: Optional[str] = None, db: Session = Depends(get_db)):
+def update_gst_filing_status(
+    filing_id: int, 
+    new_status: Optional[str] = Query(None, description="Uploaded, Filed, or Ready for Upload"), 
+    ack_num: Optional[str] = None, 
+    payload: Optional[GstStatusUpdatePayload] = None,
+    db: Session = Depends(get_db)
+):
     record = db.query(Gstr1Filing).filter(Gstr1Filing.id == filing_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="GST invoice record not found")
-    record.filing_status = new_status
-    if ack_num:
-        record.acknowledgement_num = ack_num
+    
+    final_status = new_status
+    if not final_status and payload:
+        final_status = payload.new_status or payload.filing_status
+    if not final_status:
+        final_status = "Uploaded"
+    
+    final_ack = ack_num
+    if not final_ack and payload and payload.ack_num:
+        final_ack = payload.ack_num
+
+    record.filing_status = final_status
+    if final_ack:
+        record.acknowledgement_num = final_ack
     db.commit()
     db.refresh(record)
     return {"success": True, "id": record.id, "filing_status": record.filing_status, "ack_num": record.acknowledgement_num}

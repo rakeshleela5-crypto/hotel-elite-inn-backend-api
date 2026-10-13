@@ -100,8 +100,8 @@ class BookingResponse(BaseModel):
 # POS Schemas
 class PosOrderItemCreate(BaseModel):
     item_name: str
-    quantity: int = 1
-    rate: float
+    quantity: int = Field(default=1, gt=0, description="Quantity must be strictly positive")
+    rate: float = Field(..., gt=0, description="Rate must be strictly positive")
 
 class PosOrderItemResponse(BaseModel):
     id: int
@@ -156,6 +156,7 @@ class TableMergeRequest(BaseModel):
 class OrderSettleRequest(BaseModel):
     payment_method: str = "Cash" # 'Cash', 'UPI', 'Credit Card', 'Bill to Room', 'Bill to Company'
     discount_amount: float = 0.0
+    manager_pin: Optional[str] = Field(None, description="Manager PIN authorization for discounts")
     room_number: Optional[str] = None
     cost_center: Optional[str] = None
     auth_officer: Optional[str] = None
